@@ -11,6 +11,14 @@
           <span class="status-dot"></span>
           {{ localStatusLabel }}
         </span>
+        <span
+          v-if="authenticated"
+          class="connection-pill sync-pill"
+          :class="{ offline: syncState === 'error' }"
+        >
+          <span class="status-dot"></span>
+          {{ syncStatusLabel }}
+        </span>
         <button
           v-if="workData"
           class="quiet-button"
@@ -51,10 +59,17 @@
             required
           />
         </label>
-        <label>
-          <span>{{ copy.server }}</span>
-          <input v-model.trim="apiBase" type="url" required />
+        <label class="remember-row">
+          <input v-model="rememberLogin" type="checkbox" />
+          <span>{{ copy.remember }}</span>
         </label>
+        <details class="advanced-settings">
+          <summary>{{ copy.advanced }}</summary>
+          <label>
+            <span>{{ copy.server }}</span>
+            <input v-model.trim="apiBase" type="url" required />
+          </label>
+        </details>
         <p v-if="error" class="error-message">{{ error }}</p>
         <button class="primary-button" type="submit" :disabled="loading">
           {{ loading ? copy.signingIn : copy.signIn }}
@@ -62,7 +77,7 @@
         <button class="preview-button" type="button" @click="showPreview">
           {{ copy.preview }}
         </button>
-        <small>{{ copy.prototypeNote }}</small>
+        <small>{{ copy.loginNote }}</small>
       </form>
     </section>
 
@@ -205,6 +220,11 @@
 import { useBucketsStore } from '~/stores/buckets';
 import { useServerStore } from '~/stores/server';
 import {
+  apiBaseToServerUrl,
+  autoEnrollDesktop,
+  clearDesktopSync,
+  configureDesktopSync,
+  getDesktopSyncStatus,
   getSeeSeeYouApiBase,
   getSeeSeeYouToken,
   loginToSeeSeeYou,
@@ -319,11 +339,17 @@ const COPY = {
     featureFocus: '✓ 今日重点和执行状态实时同步',
     account: '账号或邮箱',
     password: '密码',
+    remember: '在这台电脑保持登录',
+    advanced: '高级连接设置',
     server: 'SeeSeeYou 服务地址',
     signingIn: '正在连接…',
     signIn: '登录并打开 My Day',
     preview: '先看融合效果',
-    prototypeNote: '当前为界面原型；正式打包时登录凭证将迁移到系统安全存储。',
+    loginNote: '登录后会自动登记这台电脑并同步在线状态，无需输入设备码。',
+    autoSyncing: '正在连接云端',
+    autoSyncActive: '云端状态已同步',
+    autoSyncPending: '等待桌面同步',
+    autoSyncFailed: '云端同步需重试',
     refresh: '刷新',
     logout: '退出',
     todayFocus: '今日重点',
@@ -378,12 +404,18 @@ const COPY = {
     featureFocus: '✓ Focus and execution status stay in sync',
     account: 'Account or email',
     password: 'Password',
+    remember: 'Keep me signed in on this computer',
+    advanced: 'Advanced connection settings',
     server: 'SeeSeeYou server',
     signingIn: 'Connecting…',
     signIn: 'Sign in to My Day',
     preview: 'Preview the integration',
-    prototypeNote:
-      'This is a UI prototype. The packaged app will move credentials to secure OS storage.',
+    loginNote:
+      'Signing in registers this computer and syncs online status automatically. No device code is required.',
+    autoSyncing: 'Connecting to cloud',
+    autoSyncActive: 'Cloud status synced',
+    autoSyncPending: 'Desktop sync pending',
+    autoSyncFailed: 'Cloud sync needs attention',
     refresh: 'Refresh',
     logout: 'Sign out',
     todayFocus: "Today's focus",
@@ -437,7 +469,9 @@ export default {
     return {
       apiBase: getSeeSeeYouApiBase(),
       credentials: { username: '', password: '' },
+      rememberLogin: true,
       authenticated: Boolean(getSeeSeeYouToken()),
+      syncState: 'pending' as 'pending' | 'connecting' | 'active' | 'error',
       demoMode: false,
       loading: false,
       error: '',
@@ -478,6 +512,12 @@ export default {
     },
     localStatusLabel(): string {
       return this.localStatus.connected ? this.copy.localConnected : this.copy.localDisconnected;
+    },
+    syncStatusLabel(): string {
+      if (this.syncState === 'connecting') return this.copy.autoSyncing;
+      if (this.syncState === 'active') return this.copy.autoSyncActive;
+      if (this.syncState === 'error') return this.copy.autoSyncFailed;
+      return this.copy.autoSyncPending;
     },
     focusTask(): WorkTask | null {
       return this.workData?.focus || null;
@@ -520,7 +560,9 @@ export default {
   },
   async mounted() {
     await this.loadLocalStatus();
-    if (this.authenticated) await this.loadWork();
+    if (this.authenticated) {
+      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+    }
   },
   methods: {
     tasksFor(column: string): WorkTask[] {
@@ -553,10 +595,14 @@ export default {
       this.error = '';
       setSeeSeeYouApiBase(this.apiBase);
       try {
-        await loginToSeeSeeYou(this.credentials.username, this.credentials.password);
+        await loginToSeeSeeYou(
+          this.credentials.username,
+          this.credentials.password,
+          this.rememberLogin
+        );
         this.authenticated = true;
         this.credentials.password = '';
-        await this.loadWork();
+        await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
       } catch (error) {
         this.error =
           error instanceof Error && error.message ? error.message : this.copy.loginFailed;
@@ -584,12 +630,38 @@ export default {
       this.demoMode = true;
       this.workData = JSON.parse(JSON.stringify(DEMO_DATA));
     },
-    logout() {
+    async logout() {
       logoutFromSeeSeeYou();
+      await clearDesktopSync().catch(() => undefined);
       this.authenticated = false;
       this.demoMode = false;
       this.workData = null;
       this.error = '';
+      this.syncState = 'pending';
+    },
+    async ensureAutomaticSync() {
+      this.syncState = 'connecting';
+      try {
+        const configured = await getDesktopSyncStatus();
+        if (configured === null) {
+          this.syncState = 'pending';
+          return;
+        }
+        if (!configured) {
+          const enrollment = await autoEnrollDesktop();
+          await configureDesktopSync({
+            server_url: apiBaseToServerUrl(this.apiBase),
+            device_id: enrollment.device.device_id,
+            employee_id: enrollment.device.employee_id,
+            device_key: enrollment.credentials.device_token,
+            hmac_secret: enrollment.credentials.hmac_secret,
+          });
+        }
+        this.syncState = 'active';
+      } catch (error) {
+        this.syncState = 'error';
+        console.warn('Unable to configure automatic SeeSeeYou sync:', error);
+      }
     },
     async refresh() {
       await Promise.all([
@@ -723,6 +795,11 @@ export default {
   border-color: #ead8b5;
   background: #fff9ee;
 }
+.sync-pill {
+  border-color: #d8ddf6;
+  background: #f4f5ff;
+  color: #5364ad;
+}
 .status-dot {
   width: 7px;
   height: 7px;
@@ -798,6 +875,33 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+.login-card .remember-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.login-card .remember-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--mint);
+}
+.advanced-settings {
+  padding: 10px 12px;
+  border: 1px solid #e3ecea;
+  border-radius: 9px;
+  background: #f8fbfa;
+}
+.advanced-settings summary {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.advanced-settings label {
+  margin-top: 12px;
 }
 .login-card input {
   height: 42px;

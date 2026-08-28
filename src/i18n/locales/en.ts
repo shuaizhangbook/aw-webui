@@ -1,6 +1,6 @@
 export default {
   app: {
-    name: 'ActivityWatch',
+    name: 'SeeSeeYou',
     researchEdition: 'Research Edition',
   },
   nav: {

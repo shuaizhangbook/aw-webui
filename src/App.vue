@@ -2,14 +2,10 @@
 div#wrapper(v-if="loaded")
   aw-header
 
-  div(:class="{'container': !fullContainer, 'container-fluid': fullContainer}").px-0.px-md-2
-    div.aw-container.my-sm-3.mb-3.p-3
+  main.app-main(:class="{'container': !fullContainer, 'container-fluid': fullContainer}").px-0.px-md-2
+    div.aw-container.my-sm-3.mb-3.p-3.p-md-4
       error-boundary
-        user-satisfaction-poll
-        new-release-notification(v-if="isNewReleaseCheckEnabled")
         router-view
-
-  aw-footer
 </template>
 
 <script lang="ts">
@@ -24,7 +20,6 @@ export default {
   data: function () {
     return {
       activityViews: [],
-      isNewReleaseCheckEnabled: !process.env.VUE_APP_ON_ANDROID,
       loaded: false,
     };
   },
@@ -71,3 +66,32 @@ export default {
   },
 };
 </script>
+
+<style lang="scss">
+html,
+body,
+#app,
+#wrapper {
+  min-height: 100%;
+}
+
+body {
+  background: radial-gradient(circle at 8% 0%, rgba(68, 184, 164, 0.08), transparent 29rem), #f5f8f7;
+}
+
+.app-main {
+  padding-top: 78px;
+}
+
+.app-main .aw-container {
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+}
+
+@media (max-width: 767px) {
+  .app-main {
+    padding-top: 8px;
+  }
+}
+</style>
