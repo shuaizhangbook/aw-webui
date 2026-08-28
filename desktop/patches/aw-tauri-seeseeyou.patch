@@ -1,0 +1,388 @@
+diff --git a/src-tauri/src/dirs.rs b/src-tauri/src/dirs.rs
+index 1f17798..f610b97 100644
+--- a/src-tauri/src/dirs.rs
++++ b/src-tauri/src/dirs.rs
+@@ -21,8 +21,8 @@ lazy_static! {
+ pub fn get_config_dir() -> Result<PathBuf, ()> {
+     let dir = dirs::config_dir()
+         .ok_or(())?
+-        .join("activitywatch")
+-        .join("aw-tauri");
++        .join("seeseeyou")
++        .join("desktop");
+     fs::create_dir_all(&dir).expect("Unable to create config dir");
+     Ok(dir)
+ }
+@@ -37,8 +37,8 @@ pub fn get_config_dir() -> Result<PathBuf, ()> {
+ pub fn get_data_dir() -> Result<PathBuf, ()> {
+     let dir = dirs::data_dir()
+         .ok_or(())?
+-        .join("activitywatch")
+-        .join("aw-tauri");
++        .join("seeseeyou")
++        .join("desktop");
+     fs::create_dir_all(&dir).expect("Unable to create data dir");
+     Ok(dir)
+ }
+@@ -68,9 +68,9 @@ pub fn get_log_dir() -> Result<PathBuf, ()> {
+     // Windows: %LOCALAPPDATA%\activitywatch\Logs\aw-tauri
+     let dir = dirs::data_local_dir()
+         .ok_or(())?
+-        .join("activitywatch")
++        .join("seeseeyou")
+         .join("Logs")
+-        .join("aw-tauri");
++        .join("desktop");
+     fs::create_dir_all(&dir).expect("Unable to create log dir");
+     Ok(dir)
+ }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index a51b1f0..d2a1ebb 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -10,6 +10,7 @@ use std::env;
+ use std::fs::{create_dir_all, read_to_string, remove_file, write, OpenOptions};
+ use std::net::{SocketAddr, TcpListener};
+ use std::path::{Path, PathBuf};
++use std::process::Command;
+ use std::sync::{mpsc, Condvar, Mutex, OnceLock};
+ use std::thread;
+ use std::time::Duration;
+@@ -19,6 +20,9 @@ use tauri_plugin_notification::NotificationExt;
+ use tauri_plugin_opener::OpenerExt;
+ use tauri_plugin_updater::UpdaterExt;
+ 
++#[cfg(target_os = "windows")]
++use std::os::windows::process::CommandExt;
++
+ mod autostart;
+ mod dirs;
+ mod logging;
+@@ -97,6 +101,16 @@ lazy_static! {
+ }
+ static CONFIG: OnceLock<UserConfig> = OnceLock::new();
+ static FIRST_RUN: OnceLock<bool> = OnceLock::new();
++static SYNC_SCHEDULER_STARTED: OnceLock<()> = OnceLock::new();
++
++#[derive(Debug, Deserialize, Serialize)]
++pub struct DesktopSyncConfig {
++    server_url: String,
++    device_id: String,
++    employee_id: String,
++    device_key: String,
++    hmac_secret: String,
++}
+ 
+ fn init_app_handle(handle: AppHandle) {
+     HANDLE.get_or_init(|| AppHandleWrapper(Mutex::new(handle)));
+@@ -109,6 +123,80 @@ pub(crate) fn get_app_handle() -> &'static Mutex<AppHandle> {
+     &HANDLE.get().expect("HANDLE not initialized").0
+ }
+ 
++fn sync_config_path() -> PathBuf {
++    dirs::get_config_dir()
++        .expect("Failed to get SeeSeeYou config dir")
++        .join("sync-config.json")
++}
++
++fn sync_binary_path() -> Option<PathBuf> {
++    let parent = std::env::current_exe().ok()?.parent()?.to_path_buf();
++    #[cfg(target_os = "windows")]
++    let filename = "seeseeyou-sync.exe";
++    #[cfg(not(target_os = "windows"))]
++    let filename = "seeseeyou-sync";
++    Some(parent.join(filename))
++}
++
++fn run_sync_once() -> Result<(), String> {
++    let config_path = sync_config_path();
++    let binary_path = sync_binary_path().ok_or_else(|| "Unable to locate sync program".to_string())?;
++    if !config_path.exists() || !binary_path.exists() {
++        return Ok(());
++    }
++    let mut command = Command::new(binary_path);
++    command.arg("--config").arg(config_path);
++    #[cfg(target_os = "windows")]
++    command.creation_flags(0x08000000);
++    command
++        .spawn()
++        .map(|_| ())
++        .map_err(|error| format!("Unable to start SeeSeeYou sync: {error}"))
++}
++
++fn start_sync_scheduler() {
++    if SYNC_SCHEDULER_STARTED.set(()).is_err() {
++        return;
++    }
++    thread::spawn(|| loop {
++        if let Err(error) = run_sync_once() {
++            warn!("{error}");
++        }
++        thread::sleep(Duration::from_secs(300));
++    });
++}
++
++#[tauri::command]
++fn get_sync_status() -> bool {
++    sync_config_path().exists() && sync_binary_path().is_some_and(|path| path.exists())
++}
++
++#[tauri::command]
++fn configure_sync(config: DesktopSyncConfig) -> Result<(), String> {
++    if config.server_url.trim().is_empty()
++        || config.device_id.trim().is_empty()
++        || config.employee_id.trim().is_empty()
++        || config.device_key.trim().is_empty()
++        || config.hmac_secret.trim().is_empty()
++    {
++        return Err("Incomplete sync configuration".to_string());
++    }
++    let serialized = serde_json::to_vec_pretty(&config)
++        .map_err(|error| format!("Unable to encode sync configuration: {error}"))?;
++    write(sync_config_path(), serialized)
++        .map_err(|error| format!("Unable to save sync configuration: {error}"))?;
++    run_sync_once()
++}
++
++#[tauri::command]
++fn clear_sync() -> Result<(), String> {
++    let path = sync_config_path();
++    if path.exists() {
++        remove_file(path).map_err(|error| format!("Unable to clear sync configuration: {error}"))?;
++    }
++    Ok(())
++}
++
+ fn init_tray_id(id: TrayIconId) {
+     TRAY_ID
+         .set(TrayIdWrapper(id))
+@@ -232,8 +320,8 @@ pub fn handle_first_run() {
+             let app = &*get_app_handle().lock().expect("Failed to get app handle");
+             app.notification()
+                 .builder()
+-                .title("Aw-Tauri")
+-                .body("Welcome to Aw-Tauri! Click on the tray icon to launch the dashboard")
++                .title("SeeSeeYou")
++                .body("SeeSeeYou is ready. Your local activity stays private on this computer.")
+                 .show()
+                 .expect("Failed to show first run notification");
+             if let Some(window) = app.webview_windows().get("main") {
+@@ -251,6 +339,8 @@ fn build_dashboard_url(port: u16, api_key: Option<&str>) -> Url {
+         url.query_pairs_mut().append_pair("token", api_key);
+     }
+ 
++    url.set_fragment(Some("/my-day"));
++
+     url
+ }
+ 
+@@ -797,9 +887,7 @@ async fn download_and_install_update(handle: AppHandle, update: tauri_plugin_upd
+ /// Returns true if the user has opted out of update checks via
+ /// `AW_DISABLE_AUTO_UPDATE` (truthy values: 1, true, yes, on).
+ fn updates_disabled_via_env() -> bool {
+-    env::var("AW_DISABLE_AUTO_UPDATE")
+-        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+-        .unwrap_or(false)
++    true
+ }
+ 
+ #[tauri::command]
+@@ -905,6 +993,7 @@ pub fn run() {
+             {
+                 //TODO: Some of this setup could run concurrently. Could slash a few 100ms in startup?
+                 init_app_handle(app.handle().clone());
++                start_sync_scheduler();
+                 let user_config = get_config();
+                 // Bring the OS login item in line with `[autostart] enabled`.
+                 autostart::sync_from_config(app.handle());
+@@ -979,9 +1068,10 @@ pub fn run() {
+                     "main",
+                     tauri::WebviewUrl::External(dashboard_url),
+                 )
+-                .title("aw-tauri")
+-                .inner_size(800.0, 600.0)
+-                .visible(false)
++                .title("SeeSeeYou")
++                .inner_size(1180.0, 780.0)
++                .min_inner_size(920.0, 640.0)
++                .visible(true)
+                 .initialization_script(
+                     r#"
+                     document.addEventListener('click', function(e) {
+@@ -999,16 +1089,12 @@ pub fn run() {
+                 .expect("Failed to create main window");
+                 let manager_state = manager::start_manager();
+ 
+-                let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)
++                let open = MenuItem::with_id(app, "open", "Open SeeSeeYou", true, None::<&str>)
+                     .expect("Failed to create open menu item");
+-                let quit = MenuItem::with_id(app, "quit", "Quit ActivityWatch", true, None::<&str>)
++                let quit = MenuItem::with_id(app, "quit", "Quit SeeSeeYou", true, None::<&str>)
+                     .expect("Failed to create quit menu item");
+-                let autostart_item = autostart::build_menu_item(app.handle());
+ 
+-                // Placeholder tray menu, replaced by manager::build_tray_menu once
+-                // modules are discovered. Kept in sync with it so the toggle is
+-                // available even if no modules are ever found.
+-                let menu = Menu::with_items(app, &[&open, &autostart_item, &quit])
++                let menu = Menu::with_items(app, &[&open, &quit])
+                     .expect("Failed to create tray menu");
+ 
+                 #[cfg(not(target_os = "windows"))]
+@@ -1030,7 +1116,7 @@ pub fn run() {
+                     )
+                     .menu(&menu)
+                     .show_menu_on_left_click(true)
+-                    .tooltip("ActivityWatch");
++                    .tooltip("SeeSeeYou");
+                 let tray = tray_builder.build(app).expect("Failed to create tray");
+ 
+                 init_tray_id(tray.id().clone());
+@@ -1186,7 +1272,10 @@ pub fn run() {
+             restart_app,
+             close_update_progress,
+             get_autostart_enabled,
+-            set_autostart_enabled
++            set_autostart_enabled,
++            get_sync_status,
++            configure_sync,
++            clear_sync
+         ])
+         .run(tauri::generate_context!())
+         .expect("error while running tauri application");
+@@ -1200,7 +1289,7 @@ mod tests {
+     fn build_dashboard_url_omits_token_when_auth_disabled() {
+         assert_eq!(
+             build_dashboard_url(5600, None).as_str(),
+-            "http://localhost:5600/"
++            "http://localhost:5600/#/my-day"
+         );
+     }
+ 
+@@ -1208,7 +1297,7 @@ mod tests {
+     fn build_dashboard_url_ignores_empty_api_keys() {
+         assert_eq!(
+             build_dashboard_url(5600, Some("")).as_str(),
+-            "http://localhost:5600/"
++            "http://localhost:5600/#/my-day"
+         );
+     }
+ 
+@@ -1216,7 +1305,7 @@ mod tests {
+     fn build_dashboard_url_appends_encoded_token() {
+         assert_eq!(
+             build_dashboard_url(5600, Some("secret+ /?=&")).as_str(),
+-            "http://localhost:5600/?token=secret%2B+%2F%3F%3D%26"
++            "http://localhost:5600/?token=secret%2B+%2F%3F%3D%26#/my-day"
+         );
+     }
+ 
+diff --git a/src-tauri/src/manager.rs b/src-tauri/src/manager.rs
+index 56a1e71..875bc57 100644
+--- a/src-tauri/src/manager.rs
++++ b/src-tauri/src/manager.rs
+@@ -286,66 +286,13 @@ fn update_tray_menu(modules: &ModulesSnapshot, event_tx: &Option<Sender<ManagerE
+ 
+ fn build_tray_menu(
+     app: &AppHandle,
+-    modules: &ModulesSnapshot,
++    _modules: &ModulesSnapshot,
+ ) -> HashMap<String, CheckMenuItem<Wry>> {
+-    let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)
++    let open = MenuItem::with_id(app, "open", "Open SeeSeeYou", true, None::<&str>)
+         .expect("failed to create open menu item");
+-    let quit = MenuItem::with_id(app, "quit", "Quit ActivityWatch", true, None::<&str>)
++    let quit = MenuItem::with_id(app, "quit", "Quit SeeSeeYou", true, None::<&str>)
+         .expect("failed to create quit menu item");
+-
+-    let mut module_items = HashMap::new();
+-    let mut modules_submenu_builder = SubmenuBuilder::new(app, "Modules");
+-    // Started modules first, alphabetically (BTreeMap iterates in key order), each with a checkbox.
+-    for (module, run_state) in modules.iter() {
+-        if let Some(running) = run_state {
+-            let module_menu =
+-                CheckMenuItem::with_id(app, module, module, true, *running, None::<&str>)
+-                    .expect("Failed to create module menu item");
+-            modules_submenu_builder = modules_submenu_builder.item(&module_menu);
+-            module_items.insert(module.clone(), module_menu);
+-        }
+-    }
+-
+-    // Then discovered modules that have never been started, alphabetically.
+-    for (module, run_state) in modules.iter() {
+-        if run_state.is_none() {
+-            let module_menu = MenuItem::with_id(app, module, module, true, None::<&str>)
+-                .expect("Failed to create module menu item");
+-            modules_submenu_builder = modules_submenu_builder.item(&module_menu);
+-        }
+-    }
+-
+-    let module_submenu = modules_submenu_builder
+-        .build()
+-        .expect("Failed to create module submenu");
+-    let config_folder = MenuItem::with_id(
+-        app,
+-        "config_folder",
+-        "Open config folder",
+-        true,
+-        None::<&str>,
+-    )
+-    .expect("Failed to create config folder menu item");
+-
+-    let log_folder = MenuItem::with_id(app, "log_folder", "Open log folder", true, None::<&str>)
+-        .expect("Failed to create log folder menu item");
+-    let autostart_item = crate::autostart::build_menu_item(app);
+-    let separator = PredefinedMenuItem::separator(app).expect("Failed to create separator");
+-    let menu = Menu::with_items(
+-        app,
+-        &[
+-            &open,
+-            &separator,
+-            &module_submenu,
+-            &separator,
+-            &autostart_item,
+-            &config_folder,
+-            &log_folder,
+-            &separator,
+-            &quit,
+-        ],
+-    )
+-    .expect("Failed to create tray menu");
++    let menu = Menu::with_items(app, &[&open, &quit]).expect("Failed to create tray menu");
+ 
+     let tray_id = get_tray_id();
+     app.tray_by_id(tray_id)
+@@ -353,7 +300,7 @@ fn build_tray_menu(
+         .set_menu(Some(menu))
+         .expect("Failed to set tray menu");
+ 
+-    module_items
++    HashMap::new()
+ }
+ 
+ #[cfg(unix)]
+diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
+index b5b9ab8..d187ba0 100644
+--- a/src-tauri/tauri.conf.json
++++ b/src-tauri/tauri.conf.json
+@@ -1,8 +1,8 @@
+ {
+   "$schema": "https://schema.tauri.app/config/2",
+-  "productName": "aw-tauri",
++  "productName": "SeeSeeYou",
+   "version": "0.1.0",
+-  "identifier": "net.activitywatch.tauri",
++  "identifier": "com.seeseeyou.desktop",
+   "app": {
+     "windows": [],
+     "security": {
+@@ -24,7 +24,7 @@
+     "updater": {
+       "pubkey": "",
+       "endpoints": [
+-        "https://github.com/ActivityWatch/activitywatch/releases/latest/download/latest.json"
++        "https://github.com/shuaizhangbook/seeseeyou/releases/latest/download/latest.json"
+       ],
+       "dialog": false
+     }
+

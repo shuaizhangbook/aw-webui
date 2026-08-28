@@ -1,4 +1,4 @@
-name: Build My Day Windows installer
+name: Build SeeSeeYou Windows desktop
 
 on:
   workflow_dispatch:
@@ -7,40 +7,48 @@ on:
       - master
     paths:
       - .github/workflows/build-myday-windows.yml
+      - desktop/**
+      - desktop/assets/seeseeyou-icon.*
+      - src/App.vue
       - src/components/Header.vue
-      - src/i18n/locales/en.ts
-      - src/i18n/locales/zh-CN.ts
+      - src/i18n/**
       - src/route.js
       - src/util/seeseeyou.ts
       - src/views/MyDay.vue
-      - src/views/settings/LandingPageSettings.vue
 
 permissions:
   contents: read
 
+env:
+  TAURI_BUILD: 'true'
+  AW_DISABLE_AUTO_UPDATE: 'true'
+
 jobs:
-  build-windows-installer:
-    name: Windows installer
+  build-windows-desktop:
+    name: SeeSeeYou Windows desktop
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     defaults:
       run:
         shell: bash
 
     steps:
-      - name: Check out the customized web UI
+      - name: Check out the SeeSeeYou web UI
         uses: actions/checkout@v7
         with:
           path: custom-webui
 
-      - name: Check out the ActivityWatch desktop bundle
+      - name: Check out the desktop engine
         run: |
           git clone https://github.com/ActivityWatch/activitywatch.git activitywatch
           git -C activitywatch checkout 115e49e111cd0a248be6230680544235ae3a5a8e
           git -C activitywatch submodule update --init --recursive --depth 1
 
-      - name: Overlay the customized My Day web UI
+      - name: Check out the SeeSeeYou sync agent
+        run: git clone --depth 1 https://github.com/shuaizhangbook/seeseeyou.git seeseeyou
+
+      - name: Apply SeeSeeYou desktop customizations
         run: |
           tar \
             --exclude=.git \
@@ -49,12 +57,15 @@ jobs:
             --exclude=coverage \
             -C custom-webui \
             -cf - . \
-            | tar -C activitywatch/aw-server/aw-webui -xf -
+            | tar -C activitywatch/aw-tauri/aw-webui -xf -
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
+          cp custom-webui/desktop/aw-tauri.iss activitywatch/scripts/package/aw-tauri.iss
 
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -63,24 +74,51 @@ jobs:
           cache: npm
           cache-dependency-path: custom-webui/package-lock.json
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install packaging dependencies
         run: |
           choco install innosetup -y --no-progress
-          python -m pip install poetry==2.2.1
+          python -m pip install poetry==2.2.1 pyinstaller==6.15.0
 
-      - name: Build ActivityWatch with My Day
+      - name: Generate SeeSeeYou desktop icons
+        working-directory: activitywatch/aw-tauri
+        run: |
+          npm ci
+          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
+
+      - name: Build the background sync program
+        working-directory: seeseeyou/admin/client
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --onefile \
+            --name seeseeyou-sync \
+            --paths . \
+            usage-sync.py
+
+      - name: Build SeeSeeYou desktop
         working-directory: activitywatch
         run: |
           python -m venv venv
           source venv/Scripts/activate
           poetry install
-          make build SKIP_SERVER_RUST=true
+          make build TAURI_BUILD=true
 
       - name: Create Windows installer and portable ZIP
         working-directory: activitywatch
         run: |
           source venv/Scripts/activate
-          make package SKIP_SERVER_RUST=true
+          make package TAURI_BUILD=true
+          cp ../seeseeyou/admin/client/dist/seeseeyou-sync.exe dist/activitywatch/seeseeyou-sync.exe
+          rm -f dist/*.zip dist/*-setup.exe
+          bash scripts/package/package-all.sh
+          setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
+          zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
+          mv "$setup_file" dist/SeeSeeYou-0.1.0-windows-x86_64-setup.exe
+          mv "$zip_file" dist/SeeSeeYou-0.1.0-windows-x86_64-portable.zip
 
       - name: Show generated packages
         working-directory: activitywatch
@@ -89,9 +127,9 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: activitywatch-myday-windows
+          name: SeeSeeYou-Windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/activitywatch-*-windows-*-setup.exe
-            activitywatch/dist/activitywatch-*-windows-*.zip
+            activitywatch/dist/SeeSeeYou-0.1.0-windows-x86_64-setup.exe
+            activitywatch/dist/SeeSeeYou-0.1.0-windows-x86_64-portable.zip

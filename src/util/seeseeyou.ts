@@ -1,7 +1,9 @@
 const DEFAULT_API_BASE = process.env.VUE_APP_SEESEEYOU_API_BASE || 'https://watch.sding.me/api/v1';
 
 const TOKEN_KEY = 'seeseeyou-myday-session';
+const PERSISTENT_TOKEN_KEY = 'seeseeyou-myday-session-persistent';
 const API_BASE_KEY = 'seeseeyou-myday-api-base';
+const INSTALLATION_ID_KEY = 'seeseeyou-desktop-installation-id';
 
 export class SeeSeeYouApiError extends Error {
   status: number;
@@ -36,12 +38,15 @@ export function setSeeSeeYouApiBase(value: string): void {
 }
 
 export function getSeeSeeYouToken(): string {
-  return storage()?.getItem(TOKEN_KEY) || '';
+  return persistentStorage()?.getItem(PERSISTENT_TOKEN_KEY) || storage()?.getItem(TOKEN_KEY) || '';
 }
 
-export function setSeeSeeYouToken(token: string): void {
-  if (token) storage()?.setItem(TOKEN_KEY, token);
-  else storage()?.removeItem(TOKEN_KEY);
+export function setSeeSeeYouToken(token: string, remember = true): void {
+  storage()?.removeItem(TOKEN_KEY);
+  persistentStorage()?.removeItem(PERSISTENT_TOKEN_KEY);
+  if (!token) return;
+  if (remember) persistentStorage()?.setItem(PERSISTENT_TOKEN_KEY, token);
+  else storage()?.setItem(TOKEN_KEY, token);
 }
 
 export async function seeSeeYouRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -79,14 +84,104 @@ export async function seeSeeYouRequest<T>(path: string, options: RequestInit = {
   return body as T;
 }
 
-export async function loginToSeeSeeYou(username: string, password: string): Promise<void> {
+export async function loginToSeeSeeYou(
+  username: string,
+  password: string,
+  remember = true
+): Promise<void> {
   const result = await seeSeeYouRequest<{ token: string }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
-  setSeeSeeYouToken(result.token);
+  setSeeSeeYouToken(result.token, remember);
 }
 
 export function logoutFromSeeSeeYou(): void {
   setSeeSeeYouToken('');
+}
+
+export interface DesktopEnrollment {
+  device: {
+    device_id: string;
+    employee_id: string;
+    team_id: string;
+    device_name?: string | null;
+    platform?: string | null;
+  };
+  credentials: {
+    device_token: string;
+    hmac_secret: string;
+  };
+}
+
+export interface DesktopSyncConfig {
+  server_url: string;
+  device_id: string;
+  employee_id: string;
+  device_key: string;
+  hmac_secret: string;
+}
+
+function newInstallationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `desktop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function getDesktopInstallationId(): string {
+  const existing = persistentStorage()?.getItem(INSTALLATION_ID_KEY);
+  if (existing) return existing;
+  const created = newInstallationId();
+  persistentStorage()?.setItem(INSTALLATION_ID_KEY, created);
+  return created;
+}
+
+export function detectDesktopPlatform(): string {
+  const source = `${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase();
+  if (source.includes('win')) return 'Windows';
+  if (source.includes('mac')) return 'macOS';
+  if (source.includes('linux')) return 'Linux';
+  return 'Desktop';
+}
+
+export async function autoEnrollDesktop(): Promise<DesktopEnrollment> {
+  const platform = detectDesktopPlatform();
+  return seeSeeYouRequest<DesktopEnrollment>('/devices/auto-enroll', {
+    method: 'POST',
+    body: JSON.stringify({
+      installation_id: getDesktopInstallationId(),
+      device_name: `SeeSeeYou ${platform}`,
+      platform,
+    }),
+  });
+}
+
+function tauriInvoke():
+  | ((command: string, args?: Record<string, unknown>) => Promise<unknown>)
+  | null {
+  const candidate = (window as any)?.__TAURI_INTERNALS__?.invoke;
+  return typeof candidate === 'function' ? candidate : null;
+}
+
+export async function getDesktopSyncStatus(): Promise<boolean | null> {
+  const invoke = tauriInvoke();
+  if (!invoke) return null;
+  return Boolean(await invoke('get_sync_status'));
+}
+
+export async function configureDesktopSync(config: DesktopSyncConfig): Promise<boolean> {
+  const invoke = tauriInvoke();
+  if (!invoke) return false;
+  await invoke('configure_sync', { config });
+  return true;
+}
+
+export async function clearDesktopSync(): Promise<void> {
+  const invoke = tauriInvoke();
+  if (invoke) await invoke('clear_sync');
+}
+
+export function apiBaseToServerUrl(apiBase = getSeeSeeYouApiBase()): string {
+  return apiBase.replace(/\/api\/v1\/?$/, '');
 }

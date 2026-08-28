@@ -1,11 +1,11 @@
 // Simplified Chinese locale
 export default {
   app: {
-    name: 'ActivityWatch',
+    name: 'SeeSeeYou',
     researchEdition: 'Research Edition',
   },
   nav: {
-    myDay: 'My Day',
+    myDay: '我的一天',
     activity: '活动',
     loading: '加载中...',
     noActivityReports: '暂无活动报告，请确认 AFK watcher 和 window watcher 都在运行。',
