@@ -2,6 +2,18 @@ name: Build My Day Windows installer
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/build-myday-windows.yml
+      - src/components/Header.vue
+      - src/i18n/locales/en.ts
+      - src/i18n/locales/zh-CN.ts
+      - src/route.js
+      - src/util/seeseeyou.ts
+      - src/views/MyDay.vue
+      - src/views/settings/LandingPageSettings.vue
 
 permissions:
   contents: read
