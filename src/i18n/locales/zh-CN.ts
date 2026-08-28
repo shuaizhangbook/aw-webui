@@ -5,6 +5,7 @@ export default {
     researchEdition: 'Research Edition',
   },
   nav: {
+    myDay: 'My Day',
     activity: '活动',
     loading: '加载中...',
     noActivityReports: '暂无活动报告，请确认 AFK watcher 和 window watcher 都在运行。',
@@ -81,6 +82,7 @@ export default {
     },
     landingPage: {
       title: '打开页面',
+      myDay: 'My Day',
       home: '首页',
       activity: '活动（{hostname}）',
       timeline: '时间线',
