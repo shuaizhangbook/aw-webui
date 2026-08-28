@@ -2,6 +2,7 @@ import Vue from 'vue';
 import VueRouter from 'vue-router';
 
 const Home = () => import('./views/Home.vue');
+const MyDay = () => import('./views/MyDay.vue');
 
 // Activity views for desktop
 const Activity = () => import('./views/activity/Activity.vue');
@@ -36,9 +37,10 @@ const router = new VueRouter({
     {
       path: '/',
       redirect: _to => {
-        return localStorage.landingpage || '/home';
+        return localStorage.landingpage || '/my-day';
       },
     },
+    { path: '/my-day', component: MyDay },
     { path: '/home', component: Home },
     {
       path: '/activity/:host/:periodLength?/:date?',

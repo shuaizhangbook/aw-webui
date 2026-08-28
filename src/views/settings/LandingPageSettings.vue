@@ -2,16 +2,17 @@
 div
   div.d-sm-flex.justify-content-between
     div
-      h5.mt-1.mb-2.mb-sm-0 Landing page
+      h5.mt-1.mb-2.mb-sm-0 {{ $t('settings.landingPage.title') }}
     div
       b-select.landingpage(v-if="loaded" size="sm" :value="landingpage", @change="landingpage = $event")
-        option(value="/home") Home
-        option(:value="'/activity/' + hostname + '/view/'" v-for="hostname in hostnames") Activity ({{hostname}})
-        option(value="/timeline") Timeline
+        option(value="/my-day") {{ $t('settings.landingPage.myDay') }}
+        option(value="/home") {{ $t('settings.landingPage.home') }}
+        option(:value="'/activity/' + hostname + '/view/'" v-for="hostname in hostnames") {{ $t('settings.landingPage.activity', { hostname }) }}
+        option(value="/timeline") {{ $t('nav.timeline') }}
       span(v-else)
-        .aw-loading Loading...
+        .aw-loading {{ $t('common.loading') }}
   small.text-muted
-    | The page to open when opening ActivityWatch, or clicking the logo in the top menu.
+    | {{ $t('settings.landingPage.help') }}
 </template>
 
 <script lang="ts">
@@ -31,7 +32,7 @@ export default {
     landingpage: {
       get: function () {
         const settingsStore = useSettingsStore();
-        return settingsStore.landingpage || '/home';
+        return settingsStore.landingpage || '/my-day';
       },
       set: function (val) {
         const settingsStore = useSettingsStore();

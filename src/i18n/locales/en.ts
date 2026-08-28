@@ -4,6 +4,7 @@ export default {
     researchEdition: 'Research Edition',
   },
   nav: {
+    myDay: 'My Day',
     activity: 'Activity',
     loading: 'Loading...',
     noActivityReports:
@@ -80,6 +81,7 @@ export default {
     },
     landingPage: {
       title: 'Landing page',
+      myDay: 'My Day',
       home: 'Home',
       activity: 'Activity ({hostname})',
       timeline: 'Timeline',

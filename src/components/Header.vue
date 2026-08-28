@@ -12,6 +12,11 @@ div(:class="{'fixed-top-padding': fixedTopMenu}")
 
     b-collapse#nav-collapse(is-nav)
       b-navbar-nav
+        b-nav-item(to="/my-day")
+          div.px-2.px-lg-1
+            icon(name="tasks")
+            | {{ $t('nav.myDay') }}
+
         // If only a single view (the default) is available
         b-nav-item(v-if="activityViews && activityViews.length === 1", v-for="view in activityViews", :key="view.name", :to="view.pathUrl")
           div.px-2.px-lg-1
@@ -106,6 +111,7 @@ div(:class="{'fixed-top-padding': fixedTopMenu}")
 <script lang="ts">
 // only import the icons you use to reduce bundle size
 import 'vue-awesome/icons/calendar-day';
+import 'vue-awesome/icons/tasks';
 import 'vue-awesome/icons/briefcase';
 import 'vue-awesome/icons/dollar-sign';
 import 'vue-awesome/icons/calendar-week';
