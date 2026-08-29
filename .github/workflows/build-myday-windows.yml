@@ -100,6 +100,12 @@ jobs:
           npm ci
           npm run test:unit -- --runInBand test/unit/seeseeyou.test.js
 
+      - name: Generate SeeSeeYou desktop icons
+        working-directory: activitywatch/aw-tauri
+        run: |
+          npm ci
+          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
+
       - name: Test desktop sync configuration compatibility
         working-directory: activitywatch/aw-tauri/src-tauri
         run: cargo test sync_config_ --lib
@@ -108,12 +114,6 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           python -m pip install poetry==2.2.1 pyinstaller==6.15.0
-
-      - name: Generate SeeSeeYou desktop icons
-        working-directory: activitywatch/aw-tauri
-        run: |
-          npm ci
-          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
 
       - name: Build the background sync program
         working-directory: seeseeyou/admin/client
