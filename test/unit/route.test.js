@@ -1,18 +1,11 @@
 import router from '~/route';
 
 describe('router', () => {
-  test('root redirect uses localStorage landingpage when set', () => {
+  test('root always redirects to My Day', () => {
     const rootRoute = router.options.routes.find(route => route.path === '/');
 
     localStorage.landingpage = '/work-report';
-    expect(rootRoute.redirect({})).toBe('/work-report');
-  });
-
-  test('root redirect falls back to /my-day when localStorage landingpage is missing', () => {
-    const rootRoute = router.options.routes.find(route => route.path === '/');
-
-    delete localStorage.landingpage;
-    expect(rootRoute.redirect({})).toBe('/my-day');
+    expect(rootRoute.redirect).toBe('/my-day');
   });
 
   test('includes the My Day route', () => {
@@ -22,10 +15,11 @@ describe('router', () => {
     expect(typeof myDayRoute.component).toBe('function');
   });
 
-  test('includes the work report route', () => {
-    const workReportRoute = router.options.routes.find(route => route.path === '/work-report');
+  test('only exposes My Day and redirects every other route', () => {
+    const paths = router.options.routes.map(route => route.path);
+    const catchAllRoute = router.options.routes.find(route => route.path === '*');
 
-    expect(workReportRoute).toBeTruthy();
-    expect(typeof workReportRoute.component).toBe('function');
+    expect(paths).toEqual(['/', '/my-day', '*']);
+    expect(catchAllRoute.redirect).toBe('/my-day');
   });
 });

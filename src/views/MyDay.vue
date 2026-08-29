@@ -7,10 +7,6 @@
         <p>{{ formattedDate }} · {{ copy.subtitle }}</p>
       </div>
       <div class="hero-actions">
-        <span class="connection-pill" :class="{ offline: !localStatus.connected }">
-          <span class="status-dot"></span>
-          {{ localStatusLabel }}
-        </span>
         <span
           v-if="authenticated"
           class="connection-pill sync-pill"
@@ -28,13 +24,13 @@
         >
           {{ copy.refresh }}
         </button>
-        <button v-if="authenticated || demoMode" class="quiet-button" type="button" @click="logout">
+        <button v-if="authenticated" class="quiet-button" type="button" @click="logout">
           {{ copy.logout }}
         </button>
       </div>
     </section>
 
-    <section v-if="!authenticated && !demoMode" class="login-shell">
+    <section v-if="!authenticated" class="login-shell">
       <div class="login-copy">
         <span class="section-kicker">{{ copy.workspace }}</span>
         <h3>{{ copy.loginTitle }}</h3>
@@ -63,19 +59,9 @@
           <input v-model="rememberLogin" type="checkbox" />
           <span>{{ copy.remember }}</span>
         </label>
-        <details class="advanced-settings">
-          <summary>{{ copy.advanced }}</summary>
-          <label>
-            <span>{{ copy.server }}</span>
-            <input v-model.trim="apiBase" type="url" required />
-          </label>
-        </details>
         <p v-if="error" class="error-message">{{ error }}</p>
         <button class="primary-button" type="submit" :disabled="loading">
           {{ loading ? copy.signingIn : copy.signIn }}
-        </button>
-        <button class="preview-button" type="button" @click="showPreview">
-          {{ copy.preview }}
         </button>
         <small>{{ copy.loginNote }}</small>
       </form>
@@ -110,33 +96,6 @@
             <span v-if="focusTask.team_name">{{ focusTask.team_name }}</span>
             <span v-if="focusTask.due_date">{{ copy.due }} {{ focusTask.due_date }}</span>
           </div>
-        </article>
-
-        <article class="local-card">
-          <div class="card-heading">
-            <div>
-              <span class="section-kicker">ACTIVITYWATCH · LOCAL</span>
-              <h3>{{ copy.localOverview }}</h3>
-            </div>
-            <button class="text-button" type="button" @click="openActivity">
-              {{ copy.openActivity }}
-            </button>
-          </div>
-          <div class="local-metrics">
-            <div>
-              <strong>{{ localStatus.hosts }}</strong
-              ><span>{{ copy.devices }}</span>
-            </div>
-            <div>
-              <strong>{{ localStatus.windowBuckets }}</strong
-              ><span>{{ copy.appSources }}</span>
-            </div>
-            <div>
-              <strong>{{ localStatus.browserBuckets }}</strong
-              ><span>{{ copy.browserSources }}</span>
-            </div>
-          </div>
-          <p>{{ localStatus.connected ? copy.localSafe : copy.localOffline }}</p>
         </article>
       </section>
 
@@ -210,15 +169,11 @@
           </article>
         </div>
       </section>
-
-      <div v-if="demoMode" class="demo-notice">{{ copy.demoNotice }}</div>
     </template>
   </div>
 </template>
 
 <script lang="ts">
-import { useBucketsStore } from '~/stores/buckets';
-import { useServerStore } from '~/stores/server';
 import {
   apiBaseToServerUrl,
   autoEnrollDesktop,
@@ -230,7 +185,6 @@ import {
   loginToSeeSeeYou,
   logoutFromSeeSeeYou,
   seeSeeYouRequest,
-  setSeeSeeYouApiBase,
   SeeSeeYouApiError,
 } from '~/util/seeseeyou';
 
@@ -257,113 +211,32 @@ interface WorkData {
   backlog_count?: number;
 }
 
-const DEMO_DATA: WorkData = {
-  date: new Date().toISOString().slice(0, 10),
-  employee_name: 'Shuai',
-  focus: {
-    id: 101,
-    title: '完成 My Day 与 ActivityWatch 的第一版融合',
-    description: '打通本地活动数据、个人任务与桌面端工作入口。',
-    status: 'IN_PROGRESS',
-    priority: 'high',
-    team_name: 'SeeSeeYou',
-    due_date: new Date().toISOString().slice(0, 10),
-    is_today_focus: true,
-  },
-  summary: { today: 6, todo: 2, in_progress: 2, review: 1, done: 1 },
-  tasks: {
-    todo: [
-      {
-        id: 102,
-        title: '确认桌面端导航与信息层级',
-        status: 'TODO',
-        priority: 'high',
-        team_name: 'Product',
-      },
-      {
-        id: 103,
-        title: '整理 Windows 安装验证清单',
-        status: 'TODO',
-        priority: 'medium',
-        team_name: 'Release',
-      },
-    ],
-    in_progress: [
-      {
-        id: 101,
-        title: '完成 My Day 与 ActivityWatch 的第一版融合',
-        description: '打通本地活动数据、个人任务与桌面端工作入口。',
-        status: 'IN_PROGRESS',
-        priority: 'high',
-        team_name: 'SeeSeeYou',
-        is_today_focus: true,
-      },
-      {
-        id: 104,
-        title: '校对本地采集状态',
-        status: 'IN_PROGRESS',
-        priority: 'medium',
-        team_name: 'Agent',
-      },
-    ],
-    review: [
-      {
-        id: 105,
-        title: 'Agent/MCP 冒烟测试',
-        status: 'AWAITING_REVIEW',
-        priority: 'medium',
-        team_name: 'Agent',
-      },
-    ],
-    done: [
-      {
-        id: 106,
-        title: '梳理 ActivityWatch 架构',
-        status: 'DONE',
-        priority: 'low',
-        actual_hours: 1.5,
-      },
-    ],
-  },
-  backlog_count: 4,
-};
-
 const COPY = {
   zh: {
     subtitle: '把今天真正重要的事情放在一个地方',
     workspace: '个人工作台',
     loginTitle: '连接你的 SeeSeeYou 账号',
-    loginBody: 'ActivityWatch 保留本地隐私数据，My Day 只同步任务、状态和已授权的工作摘要。',
-    featureLocal: '✓ 本地活动数据仍留在电脑',
+    loginBody: '使用数据只在本机安全处理，My Day 仅同步任务和已授权的工作摘要。',
+    featureLocal: '✓ 使用数据在本机安全处理',
     featureTasks: '✓ 团队任务与个人计划统一',
     featureFocus: '✓ 今日重点和执行状态实时同步',
     account: '账号或邮箱',
     password: '密码',
     remember: '在这台电脑保持登录',
-    advanced: '高级连接设置',
-    server: 'SeeSeeYou 服务地址',
     signingIn: '正在连接…',
-    signIn: '登录并打开 My Day',
-    preview: '先看融合效果',
-    loginNote: '登录后会自动登记这台电脑并同步在线状态，无需输入设备码。',
-    autoSyncing: '正在连接云端',
-    autoSyncActive: '云端状态已同步',
-    autoSyncPending: '等待桌面同步',
-    autoSyncFailed: '云端同步需重试',
+    signIn: '登录 SeeSeeYou',
+    loginNote: '首次登录会自动连接这台电脑并同步在线状态，无需设备码。',
+    autoSyncing: '正在同步',
+    autoSyncActive: '同步已开启',
+    autoSyncPending: '准备同步',
+    autoSyncFailed: '同步暂时不可用',
     refresh: '刷新',
     logout: '退出',
     todayFocus: '今日重点',
     noFocus: '还没有设置今日重点',
-    focusFallback: '专注完成这项工作，ActivityWatch 会在本机记录投入过程。',
+    focusFallback: '专注完成这项工作，SeeSeeYou 会记录你的执行状态。',
     noFocusBody: '从下面的任务中选择一项作为今天最重要的工作。',
     due: '截止',
-    localOverview: '本机活动概览',
-    openActivity: '查看详细活动',
-    devices: '设备',
-    appSources: '应用数据源',
-    browserSources: '浏览器数据源',
-    localSafe: '活动详情直接来自本机 ActivityWatch，不需要先上传到云端。',
-    localOffline: '暂时没有连接到本地 ActivityWatch Server，任务功能仍可单独使用。',
     executionBoard: '执行看板',
     todayTasks: '今天的任务',
     items: '项',
@@ -371,15 +244,15 @@ const COPY = {
     start: '开始任务',
     complete: '完成任务',
     empty: '这里暂时没有任务',
-    previewName: '预览用户',
-    demoNotice: '你正在查看示例数据。登录 SeeSeeYou 后会替换为真实任务。',
     hoursPrompt: '请输入实际用时（小时，按 0.25 递增）',
     invalidHours: '请输入 0.25 到 999.99 之间、按 0.25 递增的数字。',
-    loginFailed: '登录失败，请检查账号、服务地址或网络。',
-    loadFailed: 'My Day 数据加载失败。',
-    actionFailed: '任务状态更新失败。',
-    localConnected: '本机采集中',
-    localDisconnected: '本机采集未连接',
+    loginFailed: '暂时无法登录，请稍后重试。',
+    loadFailed: '暂时无法加载 My Day，请稍后重试。',
+    actionFailed: '暂时无法更新任务，请稍后重试。',
+    networkError: '暂时无法连接服务，请检查网络后重试。',
+    invalidCredentials: '账号或密码错误，请重新输入。',
+    serviceUnavailable: '服务暂时不可用，请稍后重试。',
+    sessionExpired: '登录已过期，请重新登录。',
     goodMorning: '早上好',
     goodAfternoon: '下午好',
     goodEvening: '晚上好',
@@ -398,40 +271,28 @@ const COPY = {
     workspace: 'Personal workspace',
     loginTitle: 'Connect your SeeSeeYou account',
     loginBody:
-      'ActivityWatch keeps private activity local while My Day syncs tasks, status, and approved work summaries.',
+      'Usage data is processed securely on this computer. My Day only syncs tasks and approved work summaries.',
     featureLocal: '✓ Local activity stays on this computer',
     featureTasks: '✓ Team tasks and personal plans together',
     featureFocus: '✓ Focus and execution status stay in sync',
     account: 'Account or email',
     password: 'Password',
     remember: 'Keep me signed in on this computer',
-    advanced: 'Advanced connection settings',
-    server: 'SeeSeeYou server',
     signingIn: 'Connecting…',
-    signIn: 'Sign in to My Day',
-    preview: 'Preview the integration',
+    signIn: 'Sign in to SeeSeeYou',
     loginNote:
       'Signing in registers this computer and syncs online status automatically. No device code is required.',
-    autoSyncing: 'Connecting to cloud',
-    autoSyncActive: 'Cloud status synced',
-    autoSyncPending: 'Desktop sync pending',
-    autoSyncFailed: 'Cloud sync needs attention',
+    autoSyncing: 'Syncing',
+    autoSyncActive: 'Sync enabled',
+    autoSyncPending: 'Preparing sync',
+    autoSyncFailed: 'Sync temporarily unavailable',
     refresh: 'Refresh',
     logout: 'Sign out',
     todayFocus: "Today's focus",
     noFocus: 'No focus selected yet',
-    focusFallback: 'Stay with this task while ActivityWatch records the work locally.',
+    focusFallback: 'Stay with this task while SeeSeeYou records its execution status.',
     noFocusBody: 'Choose one task below as the most important work for today.',
     due: 'Due',
-    localOverview: 'Local activity overview',
-    openActivity: 'Open activity',
-    devices: 'Devices',
-    appSources: 'App sources',
-    browserSources: 'Browser sources',
-    localSafe:
-      'Activity details come directly from local ActivityWatch and do not need to be uploaded first.',
-    localOffline:
-      'Local ActivityWatch Server is unavailable. Cloud tasks can still work independently.',
     executionBoard: 'Execution board',
     todayTasks: "Today's tasks",
     items: 'items',
@@ -439,15 +300,15 @@ const COPY = {
     start: 'Start task',
     complete: 'Complete task',
     empty: 'No tasks here',
-    previewName: 'Preview user',
-    demoNotice: 'You are viewing sample data. Sign in to replace it with your actual tasks.',
     hoursPrompt: 'Actual hours (increments of 0.25)',
     invalidHours: 'Enter a number from 0.25 to 999.99 in increments of 0.25.',
-    loginFailed: 'Sign-in failed. Check the account, server address, or network.',
-    loadFailed: 'Unable to load My Day.',
-    actionFailed: 'Unable to update this task.',
-    localConnected: 'Local tracking active',
-    localDisconnected: 'Local tracking offline',
+    loginFailed: 'Unable to sign in right now. Please try again.',
+    loadFailed: 'Unable to load My Day right now. Please try again.',
+    actionFailed: 'Unable to update the task right now. Please try again.',
+    networkError: 'Unable to reach the service. Check your connection and try again.',
+    invalidCredentials: 'The account or password is incorrect.',
+    serviceUnavailable: 'The service is temporarily unavailable. Please try again later.',
+    sessionExpired: 'Your session has expired. Please sign in again.',
     goodMorning: 'Good morning',
     goodAfternoon: 'Good afternoon',
     goodEvening: 'Good evening',
@@ -467,23 +328,14 @@ export default {
   name: 'MyDay',
   data() {
     return {
-      apiBase: getSeeSeeYouApiBase(),
       credentials: { username: '', password: '' },
       rememberLogin: true,
       authenticated: Boolean(getSeeSeeYouToken()),
       syncState: 'pending' as 'pending' | 'connecting' | 'active' | 'error',
-      demoMode: false,
       loading: false,
       error: '',
       busyTaskId: null as number | null,
       workData: null as WorkData | null,
-      localStatus: {
-        connected: false,
-        hosts: 0,
-        windowBuckets: 0,
-        browserBuckets: 0,
-        hostname: '',
-      },
     };
   },
   computed: {
@@ -498,7 +350,7 @@ export default {
           : hour < 18
           ? this.copy.goodAfternoon
           : this.copy.goodEvening;
-      const name = this.workData?.employee_name || (this.demoMode ? this.copy.previewName : '');
+      const name = this.workData?.employee_name || '';
       return name ? `${greeting}，${name}` : greeting;
     },
     formattedDate(): string {
@@ -509,9 +361,6 @@ export default {
         month: 'long',
         day: 'numeric',
       }).format(new Date(`${value}T12:00:00`));
-    },
-    localStatusLabel(): string {
-      return this.localStatus.connected ? this.copy.localConnected : this.copy.localDisconnected;
     },
     syncStatusLabel(): string {
       if (this.syncState === 'connecting') return this.copy.autoSyncing;
@@ -559,7 +408,6 @@ export default {
     },
   },
   async mounted() {
-    await this.loadLocalStatus();
     if (this.authenticated) {
       await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
     }
@@ -572,28 +420,18 @@ export default {
       const value = String(priority || 'medium').toLowerCase();
       return value === 'high' ? this.copy.high : value === 'low' ? this.copy.low : this.copy.medium;
     },
-    async loadLocalStatus() {
-      try {
-        const bucketsStore = useBucketsStore();
-        await bucketsStore.ensureLoaded();
-        const buckets = bucketsStore.buckets || [];
-        const hosts = new Set(buckets.map(bucket => bucket.hostname).filter(Boolean));
-        const serverStore = useServerStore();
-        this.localStatus = {
-          connected: buckets.length > 0,
-          hosts: hosts.size,
-          windowBuckets: buckets.filter(bucket => bucket.type === 'currentwindow').length,
-          browserBuckets: buckets.filter(bucket => bucket.type === 'web.tab.current').length,
-          hostname: serverStore.info?.hostname || Array.from(hosts)[0] || '',
-        };
-      } catch {
-        this.localStatus.connected = false;
+    friendlyError(error: unknown, fallback: string, isLogin = false): string {
+      if (!(error instanceof SeeSeeYouApiError)) return fallback;
+      if (error.status === 0) return this.copy.networkError;
+      if (error.status === 401) {
+        return isLogin ? this.copy.invalidCredentials : this.copy.sessionExpired;
       }
+      if (error.status >= 500) return this.copy.serviceUnavailable;
+      return fallback;
     },
     async login() {
       this.loading = true;
       this.error = '';
-      setSeeSeeYouApiBase(this.apiBase);
       try {
         await loginToSeeSeeYou(
           this.credentials.username,
@@ -604,8 +442,7 @@ export default {
         this.credentials.password = '';
         await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
       } catch (error) {
-        this.error =
-          error instanceof Error && error.message ? error.message : this.copy.loginFailed;
+        this.error = this.friendlyError(error, this.copy.loginFailed, true);
       } finally {
         this.loading = false;
       }
@@ -621,20 +458,15 @@ export default {
           this.authenticated = false;
           this.workData = null;
         }
-        this.error = error instanceof Error && error.message ? error.message : this.copy.loadFailed;
+        this.error = this.friendlyError(error, this.copy.loadFailed);
       } finally {
         this.loading = false;
       }
-    },
-    showPreview() {
-      this.demoMode = true;
-      this.workData = JSON.parse(JSON.stringify(DEMO_DATA));
     },
     async logout() {
       logoutFromSeeSeeYou();
       await clearDesktopSync().catch(() => undefined);
       this.authenticated = false;
-      this.demoMode = false;
       this.workData = null;
       this.error = '';
       this.syncState = 'pending';
@@ -650,7 +482,8 @@ export default {
         if (!configured) {
           const enrollment = await autoEnrollDesktop();
           await configureDesktopSync({
-            server_url: apiBaseToServerUrl(this.apiBase),
+            server_url: apiBaseToServerUrl(getSeeSeeYouApiBase()),
+            local_api_url: `${window.location.origin.replace(/\/+$/, '')}/api/0`,
             device_id: enrollment.device.device_id,
             employee_id: enrollment.device.employee_id,
             device_key: enrollment.credentials.device_token,
@@ -664,23 +497,12 @@ export default {
       }
     },
     async refresh() {
-      await Promise.all([
-        this.loadLocalStatus(),
-        this.demoMode ? Promise.resolve() : this.loadWork(),
-      ]);
-    },
-    openActivity() {
-      if (this.localStatus.hostname) this.$router.push(`/activity/${this.localStatus.hostname}`);
-      else this.$router.push('/timeline');
+      await this.loadWork();
     },
     async performAction(task: WorkTask, action: 'start' | 'complete' | 'focus') {
       this.busyTaskId = task.id;
       this.error = '';
       try {
-        if (this.demoMode) {
-          this.applyDemoAction(task, action);
-          return;
-        }
         if (action === 'complete') {
           const raw = window.prompt(this.copy.hoursPrompt, '1');
           if (raw === null) return;
@@ -701,36 +523,10 @@ export default {
         }
         await this.loadWork();
       } catch (error) {
-        this.error =
-          error instanceof Error && error.message ? error.message : this.copy.actionFailed;
+        this.error = this.friendlyError(error, this.copy.actionFailed);
       } finally {
         this.busyTaskId = null;
       }
-    },
-    applyDemoAction(task: WorkTask, action: 'start' | 'complete' | 'focus') {
-      if (!this.workData) return;
-      if (action === 'focus') {
-        const taskLists = Object.values(this.workData.tasks) as WorkTask[][];
-        for (const list of taskLists) {
-          for (const item of list) item.is_today_focus = item.id === task.id;
-        }
-        task.is_today_focus = true;
-        this.workData.focus = task;
-        return;
-      }
-      const from = action === 'start' ? 'todo' : 'in_progress';
-      const to =
-        action === 'start'
-          ? 'in_progress'
-          : task.status === 'IN_PROGRESS' && task.team_name
-          ? 'review'
-          : 'done';
-      this.workData.tasks[from] = this.workData.tasks[from].filter(item => item.id !== task.id);
-      task.status =
-        to === 'in_progress' ? 'IN_PROGRESS' : to === 'review' ? 'AWAITING_REVIEW' : 'DONE';
-      this.workData.tasks[to].push(task);
-      this.workData.summary[from] = this.workData.tasks[from].length;
-      this.workData.summary[to] = this.workData.tasks[to].length;
     },
   },
 };
@@ -888,21 +684,6 @@ button {
   height: 16px;
   accent-color: var(--mint);
 }
-.advanced-settings {
-  padding: 10px 12px;
-  border: 1px solid #e3ecea;
-  border-radius: 9px;
-  background: #f8fbfa;
-}
-.advanced-settings summary {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 750;
-  cursor: pointer;
-}
-.advanced-settings label {
-  margin-top: 12px;
-}
 .login-card input {
   height: 42px;
   padding: 0 12px;
@@ -916,8 +697,7 @@ button {
   border-color: var(--mint);
   box-shadow: 0 0 0 3px rgba(13, 143, 131, 0.11);
 }
-.primary-button,
-.preview-button {
+.primary-button {
   min-height: 42px;
   border-radius: 8px;
   font-weight: 800;
@@ -927,11 +707,6 @@ button {
   border: 0;
   background: var(--mint);
   color: white;
-}
-.preview-button {
-  border: 1px solid var(--line);
-  background: white;
-  color: var(--ink);
 }
 .login-card small {
   color: #8c9998;
@@ -976,13 +751,9 @@ button {
   letter-spacing: -0.04em;
 }
 .focus-grid {
-  display: grid;
-  grid-template-columns: 1.35fr 0.65fr;
-  gap: 14px;
   margin-bottom: 18px;
 }
-.focus-card,
-.local-card {
+.focus-card {
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1032,35 +803,6 @@ button {
   color: var(--mint-dark);
   font-size: 11px;
   font-weight: 700;
-}
-.local-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin: 19px 0 14px;
-}
-.local-metrics div {
-  padding: 12px 8px;
-  border-radius: 9px;
-  background: #f4f7f6;
-  text-align: center;
-}
-.local-metrics strong,
-.local-metrics span {
-  display: block;
-}
-.local-metrics strong {
-  font-size: 22px;
-}
-.local-metrics span {
-  color: var(--muted);
-  font-size: 10px;
-}
-.local-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
 }
 .text-button {
   color: var(--mint);
@@ -1189,18 +931,8 @@ button {
   font-size: 11px;
   text-align: center;
 }
-.demo-notice {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #fff8e8;
-  color: #846a35;
-  font-size: 12px;
-  text-align: center;
-}
 @media (max-width: 991px) {
-  .login-shell,
-  .focus-grid {
+  .login-shell {
     grid-template-columns: 1fr;
   }
   .login-copy {

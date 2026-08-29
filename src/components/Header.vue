@@ -1,108 +1,34 @@
 <template lang="pug">
-header.app-header(:class="{'fixed-top': fixedTopMenu}")
-  b-navbar.shell-navbar(toggleable="md")
+header.app-header.fixed-top
+  b-navbar.shell-navbar
     b-navbar-brand.brand(to="/my-day")
       span.brand-mark S
       span.brand-copy
         strong SeeSeeYou
         small Work clearly
 
-    b-navbar-toggle(target="main-navigation" aria-label="Toggle navigation")
+    span.current-page
+      icon(name="tasks")
+      span {{ $t('nav.myDay') }}
 
-    b-collapse#main-navigation(is-nav)
-      b-navbar-nav.primary-navigation
-        b-nav-item(to="/my-day")
-          icon(name="tasks")
-          span {{ $t('nav.myDay') }}
-
-        b-nav-item(v-if="activityViews && activityViews.length === 1" :to="activityViews[0].pathUrl")
-          icon(name="chart-line")
-          span {{ $t('nav.activity') }}
-
-        b-nav-item-dropdown(v-else no-caret)
-          template(slot="button-content")
-            icon(name="chart-line")
-            span {{ $t('nav.activity') }}
-            span.nav-chevron ▾
-          b-dropdown-item(v-if="activityViews === null" disabled) {{ $t('nav.loading') }}
-          b-dropdown-item(v-else-if="activityViews.length === 0" disabled)
-            | {{ $t('nav.noActivityReports') }}
-          b-dropdown-item(v-for="view in activityViews" :key="view.name" :to="view.pathUrl")
-            icon(:name="view.icon")
-            span {{ view.name }}
-
-        b-nav-item(to="/timeline")
-          icon(name="stream")
-          span {{ $t('nav.timeline') }}
-
-      b-navbar-nav.ml-auto.header-actions
-        li.language-switch(aria-label="Language")
-          button(type="button" :class="{active: currentLocale === 'zh-CN'}" @click="changeLocale('zh-CN')") 中文
-          button(type="button" :class="{active: currentLocale === 'en'}" @click="changeLocale('en')") EN
-        b-nav-item.settings-link(to="/settings" :title="$t('nav.settings')")
-          icon(name="cog")
-          span.d-md-none {{ $t('nav.settings') }}
+    b-navbar-nav.ml-auto.header-actions
+      li.language-switch(aria-label="Language")
+        button(type="button" :class="{active: currentLocale === 'zh-CN'}" @click="changeLocale('zh-CN')") 中文
+        button(type="button" :class="{active: currentLocale === 'en'}" @click="changeLocale('en')") EN
 </template>
 
 <script lang="ts">
 import 'vue-awesome/icons/tasks';
-import 'vue-awesome/icons/chart-line';
-import 'vue-awesome/icons/stream';
-import 'vue-awesome/icons/cog';
-import 'vue-awesome/icons/mobile';
-import 'vue-awesome/icons/desktop';
 
-import _ from 'lodash';
-import { useBucketsStore } from '~/stores/buckets';
 import { useSettingsStore } from '~/stores/settings';
 import { setAppLocale } from '~/i18n';
-import { IBucket } from '~/util/interfaces';
 
 export default {
   name: 'Header',
-  data() {
-    return {
-      activityViews: null,
-      fixedTopMenu: true,
-    };
-  },
   computed: {
     currentLocale(): string {
       return String(this.$i18n.locale);
     },
-  },
-  async mounted() {
-    const bucketStore = useBucketsStore();
-    await bucketStore.ensureLoaded();
-    const buckets: IBucket[] = bucketStore.buckets;
-    const typesByHost: Record<string, { afk?: boolean; window?: boolean; android?: boolean }> = {};
-    const activityViews: { name: string; pathUrl: string; icon: string }[] = [];
-
-    _.each(buckets, bucket => {
-      typesByHost[bucket.hostname] = typesByHost[bucket.hostname] || {};
-      typesByHost[bucket.hostname].afk ||= bucket.type === 'afkstatus';
-      typesByHost[bucket.hostname].window ||= bucket.type === 'currentwindow';
-      typesByHost[bucket.hostname].android ||=
-        bucket.type === 'currentwindow' && bucket.id.includes('android');
-    });
-
-    _.each(typesByHost, (types, hostname) => {
-      if (types.android) {
-        activityViews.push({
-          name: `${hostname} (Android)`,
-          pathUrl: `/activity/${hostname}`,
-          icon: 'mobile',
-        });
-      } else if (hostname !== 'unknown') {
-        activityViews.push({
-          name: hostname,
-          pathUrl: `/activity/${hostname}`,
-          icon: 'desktop',
-        });
-      }
-    });
-
-    this.activityViews = activityViews;
   },
   methods: {
     changeLocale(locale: 'zh-CN' | 'en') {
@@ -170,12 +96,18 @@ export default {
   text-transform: uppercase;
 }
 
-.primary-navigation {
-  gap: 5px;
+.current-page {
+  display: inline-flex;
   align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  background: #edf8f5;
+  color: #08796f;
+  font-size: 13px;
+  font-weight: 750;
 }
 
-.primary-navigation ::v-deep .nav-link,
 .header-actions ::v-deep .nav-link {
   display: flex;
   min-height: 40px;
@@ -186,17 +118,6 @@ export default {
   color: #647573 !important;
   font-size: 13px;
   font-weight: 750;
-}
-
-.primary-navigation ::v-deep .nav-link:hover,
-.primary-navigation ::v-deep .router-link-active {
-  background: #edf8f5;
-  color: #08796f !important;
-}
-
-.nav-chevron {
-  margin-left: 2px;
-  font-size: 10px;
 }
 
 .header-actions {
@@ -230,10 +151,6 @@ export default {
   color: #08796f;
 }
 
-.settings-link ::v-deep .nav-link {
-  justify-content: center;
-}
-
 @media (max-width: 767px) {
   .app-header.fixed-top {
     position: sticky;
@@ -243,15 +160,16 @@ export default {
     width: min(100% - 24px, 1320px);
   }
 
-  .primary-navigation,
-  .header-actions {
-    align-items: stretch;
-    padding: 10px 0;
+  .language-switch {
+    margin-left: auto;
   }
 
-  .language-switch {
-    width: max-content;
-    margin: 5px 12px;
+  .brand-copy {
+    display: none;
+  }
+
+  .brand {
+    margin-right: 12px;
   }
 }
 </style>
