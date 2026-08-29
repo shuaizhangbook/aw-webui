@@ -7,6 +7,22 @@
         <p>{{ formattedDate }} · {{ copy.subtitle }}</p>
       </div>
       <div class="hero-actions">
+        <label v-if="authenticated && teams.length > 1" class="team-picker">
+          <span>{{ copy.currentTeam }}</span>
+          <select
+            v-model="selectedTeamId"
+            :disabled="loading || teamLoading || syncState === 'connecting'"
+            @change="changeTeam"
+          >
+            <option disabled value="">{{ copy.chooseTeam }}</option>
+            <option v-for="team in teams" :key="team.team_id" :value="team.team_id">
+              {{ team.name }}
+            </option>
+          </select>
+        </label>
+        <span v-else-if="authenticated && selectedTeam" class="connection-pill team-pill">
+          {{ selectedTeam.name }}
+        </span>
         <span
           v-if="authenticated"
           class="connection-pill sync-pill"
@@ -16,10 +32,10 @@
           {{ syncStatusLabel }}
         </span>
         <button
-          v-if="workData"
+          v-if="authenticated"
           class="quiet-button"
           type="button"
-          :disabled="loading"
+          :disabled="loading || teamLoading || syncState === 'connecting'"
           @click="refresh"
         >
           {{ copy.refresh }}
@@ -68,7 +84,7 @@
     </section>
 
     <template v-else>
-      <p v-if="error" class="error-banner">{{ error }}</p>
+      <p v-if="error || teamNotice" class="error-banner">{{ error || teamNotice }}</p>
 
       <section class="summary-grid">
         <article v-for="card in summaryCards" :key="card.key" class="summary-card">
@@ -179,13 +195,19 @@ import {
   autoEnrollDesktop,
   clearDesktopSync,
   configureDesktopSync,
+  getDesktopSyncBinding,
   getDesktopSyncStatus,
+  getSelectedSeeSeeYouTeamId,
   getSeeSeeYouApiBase,
+  getSeeSeeYouEnrollmentContext,
   getSeeSeeYouToken,
   loginToSeeSeeYou,
   logoutFromSeeSeeYou,
+  resolveSeeSeeYouTeamSelection,
   seeSeeYouRequest,
   SeeSeeYouApiError,
+  setSelectedSeeSeeYouTeamId,
+  type SeeSeeYouTeam,
 } from '~/util/seeseeyou';
 
 interface WorkTask {
@@ -230,6 +252,15 @@ const COPY = {
     autoSyncActive: '同步已开启',
     autoSyncPending: '准备同步',
     autoSyncFailed: '同步暂时不可用',
+    autoSyncSelectTeam: '请选择团队',
+    autoSyncUnavailable: '没有可用团队',
+    currentTeam: '数据同步团队',
+    chooseTeam: '选择同步团队',
+    teamRequired: '请选择数据同步团队；任务仍可查看，活动数据会暂停同步。',
+    teamLoadFailed: '暂时无法加载团队，请稍后重试。',
+    teamForbidden: '你没有访问该团队的权限，请重新选择。',
+    noActiveTeams: '你的账号当前没有可用团队，请联系管理员。',
+    employeeInactive: '你的成员账号已停用，请联系管理员。',
     refresh: '刷新',
     logout: '退出',
     todayFocus: '今日重点',
@@ -286,6 +317,16 @@ const COPY = {
     autoSyncActive: 'Sync enabled',
     autoSyncPending: 'Preparing sync',
     autoSyncFailed: 'Sync temporarily unavailable',
+    autoSyncSelectTeam: 'Select a team',
+    autoSyncUnavailable: 'No active team',
+    currentTeam: 'Activity sync team',
+    chooseTeam: 'Select a sync team',
+    teamRequired:
+      'Select an activity sync team. Tasks remain available while activity sync is paused.',
+    teamLoadFailed: 'Unable to load your teams right now. Please try again.',
+    teamForbidden: 'You no longer have access to that team. Select another team.',
+    noActiveTeams: 'Your account has no active team. Contact an administrator.',
+    employeeInactive: 'Your member account is inactive. Contact an administrator.',
     refresh: 'Refresh',
     logout: 'Sign out',
     todayFocus: "Today's focus",
@@ -332,10 +373,18 @@ export default {
       rememberLogin: true,
       authenticated: Boolean(getSeeSeeYouToken()),
       syncState: 'pending' as 'pending' | 'connecting' | 'active' | 'error',
+      syncGeneration: 0,
+      syncQueue: Promise.resolve() as Promise<void>,
       loading: false,
+      teamLoading: false,
+      teamContextLoaded: false,
       error: '',
+      teamNotice: '',
       busyTaskId: null as number | null,
       workData: null as WorkData | null,
+      teams: [] as SeeSeeYouTeam[],
+      employeeId: '',
+      selectedTeamId: '',
     };
   },
   computed: {
@@ -366,7 +415,14 @@ export default {
       if (this.syncState === 'connecting') return this.copy.autoSyncing;
       if (this.syncState === 'active') return this.copy.autoSyncActive;
       if (this.syncState === 'error') return this.copy.autoSyncFailed;
+      if (this.teams.length > 1 && !this.selectedTeamId) return this.copy.autoSyncSelectTeam;
+      if (this.teamContextLoaded && this.teams.length === 0) {
+        return this.copy.autoSyncUnavailable;
+      }
       return this.copy.autoSyncPending;
+    },
+    selectedTeam(): SeeSeeYouTeam | null {
+      return this.teams.find(team => team.team_id === this.selectedTeamId) || null;
     },
     focusTask(): WorkTask | null {
       return this.workData?.focus || null;
@@ -409,7 +465,7 @@ export default {
   },
   async mounted() {
     if (this.authenticated) {
-      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+      await this.initializeWorkspace();
     }
   },
   methods: {
@@ -422,6 +478,10 @@ export default {
     },
     friendlyError(error: unknown, fallback: string, isLogin = false): string {
       if (!(error instanceof SeeSeeYouApiError)) return fallback;
+      if (error.code === 'team_selection_required') return this.copy.teamRequired;
+      if (error.code === 'team_forbidden') return this.copy.teamForbidden;
+      if (error.code === 'no_active_team') return this.copy.noActiveTeams;
+      if (error.code === 'employee_inactive') return this.copy.employeeInactive;
       if (error.status === 0) return this.copy.networkError;
       if (error.status === 401) {
         return isLogin ? this.copy.invalidCredentials : this.copy.sessionExpired;
@@ -440,19 +500,79 @@ export default {
         );
         this.authenticated = true;
         this.credentials.password = '';
-        await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+        await this.initializeWorkspace();
       } catch (error) {
         this.error = this.friendlyError(error, this.copy.loginFailed, true);
       } finally {
         this.loading = false;
       }
     },
+    async initializeWorkspace() {
+      const contextLoaded = await this.loadTeams();
+      if (!contextLoaded) {
+        this.workData = null;
+        return;
+      }
+      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+    },
+    async loadTeams(): Promise<boolean> {
+      this.syncGeneration += 1;
+      const generation = this.syncGeneration;
+      this.teamLoading = true;
+      this.teamContextLoaded = false;
+      this.error = '';
+      this.teamNotice = '';
+      try {
+        const context = await getSeeSeeYouEnrollmentContext();
+        if (generation !== this.syncGeneration || !this.authenticated) return false;
+        this.teamContextLoaded = true;
+        this.employeeId = context.employee_id;
+        this.teams = context.teams;
+        const selected = resolveSeeSeeYouTeamSelection(
+          this.teams,
+          getSelectedSeeSeeYouTeamId(this.employeeId)
+        );
+        this.selectedTeamId = selected;
+        setSelectedSeeSeeYouTeamId(this.employeeId, selected);
+
+        if (this.teams.length === 0) {
+          this.teamNotice = this.copy.noActiveTeams;
+        } else if (!selected) {
+          this.teamNotice = this.copy.teamRequired;
+        }
+        return true;
+      } catch (error) {
+        if (generation !== this.syncGeneration) return false;
+        if (error instanceof SeeSeeYouApiError && error.status === 401) {
+          logoutFromSeeSeeYou();
+          this.authenticated = false;
+        }
+        this.teams = [];
+        this.employeeId = '';
+        this.selectedTeamId = '';
+        this.error = this.friendlyError(error, this.copy.teamLoadFailed);
+        return false;
+      } finally {
+        if (generation === this.syncGeneration) this.teamLoading = false;
+      }
+    },
     async loadWork() {
+      const generation = this.syncGeneration;
+      const employeeId = this.employeeId;
+      const teamId = this.selectedTeamId;
       this.loading = true;
       this.error = '';
       try {
-        this.workData = await seeSeeYouRequest<WorkData>('/my-work');
+        const headers = teamId ? { 'X-Team-ID': teamId } : {};
+        const workData = await seeSeeYouRequest<WorkData>('/my-work', {
+          headers,
+        });
+        if (!this.authenticated || !this.syncOperationIsCurrent(generation, employeeId, teamId)) {
+          return;
+        }
+        this.workData = workData;
       } catch (error) {
+        if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
         if (error instanceof SeeSeeYouApiError && error.status === 401) {
           logoutFromSeeSeeYou();
           this.authenticated = false;
@@ -460,44 +580,118 @@ export default {
         }
         this.error = this.friendlyError(error, this.copy.loadFailed);
       } finally {
-        this.loading = false;
+        if (this.syncOperationIsCurrent(generation, employeeId, teamId)) this.loading = false;
       }
     },
     async logout() {
       logoutFromSeeSeeYou();
-      await clearDesktopSync().catch(() => undefined);
+      this.syncGeneration += 1;
       this.authenticated = false;
       this.workData = null;
+      this.teams = [];
+      this.employeeId = '';
+      this.selectedTeamId = '';
       this.error = '';
+      this.teamNotice = '';
+      this.teamContextLoaded = false;
+      this.loading = false;
+      this.teamLoading = false;
       this.syncState = 'pending';
+      const cleanup = this.syncQueue.then(() => clearDesktopSync());
+      this.syncQueue = cleanup.catch(error => {
+        console.warn('Unable to clear automatic SeeSeeYou sync:', error);
+      });
+      await this.syncQueue;
     },
     async ensureAutomaticSync() {
+      const generation = this.syncGeneration;
+      const employeeId = this.employeeId;
+      const teamId = this.selectedTeamId;
+      const operation = this.syncQueue.then(() =>
+        this.runAutomaticSync(generation, employeeId, teamId)
+      );
+      this.syncQueue = operation.catch(() => undefined);
+      await operation;
+    },
+    syncOperationIsCurrent(generation: number, employeeId: string, teamId: string): boolean {
+      return (
+        generation === this.syncGeneration &&
+        employeeId === this.employeeId &&
+        teamId === this.selectedTeamId
+      );
+    },
+    async runAutomaticSync(generation: number, employeeId: string, teamId: string) {
+      if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
       this.syncState = 'connecting';
       try {
         const configured = await getDesktopSyncStatus();
+        if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
         if (configured === null) {
           this.syncState = 'pending';
           return;
         }
-        if (!configured) {
-          const enrollment = await autoEnrollDesktop();
-          await configureDesktopSync({
+        if (!this.authenticated || !employeeId || !teamId) {
+          if (configured) {
+            await clearDesktopSync();
+            if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
+          }
+          this.syncState = 'pending';
+          return;
+        }
+        const binding = configured ? await getDesktopSyncBinding() : null;
+        if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
+        const bindingMatches = binding?.employee_id === employeeId && binding?.team_id === teamId;
+        if (!configured || !bindingMatches) {
+          if (configured) {
+            await clearDesktopSync();
+            if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
+          }
+          const enrollment = await autoEnrollDesktop(teamId);
+          if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
+          if (
+            enrollment.device.employee_id !== employeeId ||
+            enrollment.device.team_id !== teamId
+          ) {
+            throw new SeeSeeYouApiError('Desktop enrollment returned a different binding.', 409);
+          }
+          const saved = await configureDesktopSync({
             server_url: apiBaseToServerUrl(getSeeSeeYouApiBase()),
             local_api_url: `${window.location.origin.replace(/\/+$/, '')}/api/0`,
             device_id: enrollment.device.device_id,
             employee_id: enrollment.device.employee_id,
+            team_id: enrollment.device.team_id,
             device_key: enrollment.credentials.device_token,
             hmac_secret: enrollment.credentials.hmac_secret,
           });
+          if (!saved) throw new SeeSeeYouApiError('Desktop sync is unavailable.');
+          if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
         }
         this.syncState = 'active';
       } catch (error) {
+        if (!this.syncOperationIsCurrent(generation, employeeId, teamId)) return;
         this.syncState = 'error';
+        if (!this.error) this.error = this.friendlyError(error, this.copy.autoSyncFailed);
         console.warn('Unable to configure automatic SeeSeeYou sync:', error);
       }
     },
+    async changeTeam() {
+      this.syncGeneration += 1;
+      if (!this.teams.some(team => team.team_id === this.selectedTeamId)) {
+        this.selectedTeamId = '';
+        setSelectedSeeSeeYouTeamId(this.employeeId, '');
+        this.teamNotice = this.copy.teamRequired;
+        this.syncState = 'pending';
+        await this.ensureAutomaticSync();
+        return;
+      }
+      setSelectedSeeSeeYouTeamId(this.employeeId, this.selectedTeamId);
+      this.error = '';
+      this.teamNotice = '';
+      this.workData = null;
+      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+    },
     async refresh() {
-      await this.loadWork();
+      await this.initializeWorkspace();
     },
     async performAction(task: WorkTask, action: 'start' | 'complete' | 'focus') {
       this.busyTaskId = task.id;
@@ -574,6 +768,36 @@ export default {
   flex-wrap: wrap;
   gap: 8px;
 }
+.team-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 8px 0 11px;
+  border: 1px solid #bde1dc;
+  border-radius: 9px;
+  background: #effaf7;
+  color: var(--mint-dark);
+  font-size: 11px;
+  font-weight: 700;
+}
+.team-picker select {
+  max-width: 190px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.team-picker select:focus {
+  outline: 2px solid rgba(13, 143, 131, 0.18);
+  outline-offset: 1px;
+}
+.team-picker select:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .connection-pill {
   display: inline-flex;
   align-items: center;
@@ -585,6 +809,12 @@ export default {
   color: var(--mint-dark);
   font-size: 12px;
   font-weight: 700;
+}
+.team-pill {
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .connection-pill.offline {
   color: #8a6b32;
@@ -620,6 +850,10 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+.quiet-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 .login-shell {
   display: grid;
