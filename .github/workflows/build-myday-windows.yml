@@ -48,7 +48,7 @@ jobs:
       - name: Check out the SeeSeeYou sync agent
         run: |
           git clone https://github.com/shuaizhangbook/seeseeyou.git seeseeyou
-          git -C seeseeyou checkout 8b9d05e0a2665a2b2734797dbd02bf44039e8455
+          git -C seeseeyou checkout 36533603fa8de87efe8ed4f61976a81af4d4e772
 
       - name: Apply SeeSeeYou desktop customizations
         run: |
@@ -101,8 +101,8 @@ jobs:
           npm run test:unit -- --runInBand test/unit/seeseeyou.test.js
 
       - name: Test desktop sync configuration compatibility
-        working-directory: activitywatch/aw-tauri
-        run: cargo test --manifest-path src-tauri/Cargo.toml sync_config_ --lib
+        working-directory: activitywatch/aw-tauri/src-tauri
+        run: cargo test sync_config_ --lib
 
       - name: Install packaging dependencies
         run: |

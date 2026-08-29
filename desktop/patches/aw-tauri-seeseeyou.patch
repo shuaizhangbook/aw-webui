@@ -84,12 +84,15 @@ index 1f17798..f610b97 100644
      Ok(dir)
  }
 diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
-index a51b1f0..8a90ada 100644
+index a51b1f0..e47a393 100644
 --- a/src-tauri/src/lib.rs
 +++ b/src-tauri/src/lib.rs
-@@ -10,6 +10,7 @@ use std::env;
+@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
+ use std::collections::BTreeMap;
+ use std::env;
  use std::fs::{create_dir_all, read_to_string, remove_file, write, OpenOptions};
- use std::net::{SocketAddr, TcpListener};
+-use std::net::{SocketAddr, TcpListener};
++use std::net::{SocketAddr, TcpListener, TcpStream};
  use std::path::{Path, PathBuf};
 +use std::process::Command;
  use std::sync::{mpsc, Condvar, Mutex, OnceLock};
@@ -109,7 +112,7 @@ index a51b1f0..8a90ada 100644
  }
  static CONFIG: OnceLock<UserConfig> = OnceLock::new();
  static FIRST_RUN: OnceLock<bool> = OnceLock::new();
-+static SYNC_SCHEDULER_STARTED: OnceLock<()> = OnceLock::new();
++static SYNC_TRIGGER: OnceLock<mpsc::SyncSender<()>> = OnceLock::new();
 +const DEFAULT_LOCAL_API_URL: &str = "http://localhost:5600/api/0";
 +
 +#[derive(Debug, Deserialize, Serialize)]
@@ -133,7 +136,7 @@ index a51b1f0..8a90ada 100644
  
  fn init_app_handle(handle: AppHandle) {
      HANDLE.get_or_init(|| AppHandleWrapper(Mutex::new(handle)));
-@@ -109,6 +134,130 @@ pub(crate) fn get_app_handle() -> &'static Mutex<AppHandle> {
+@@ -109,6 +134,170 @@ pub(crate) fn get_app_handle() -> &'static Mutex<AppHandle> {
      &HANDLE.get().expect("HANDLE not initialized").0
  }
  
@@ -198,21 +201,61 @@ index a51b1f0..8a90ada 100644
 +    command.arg("--config").arg(config_path);
 +    #[cfg(target_os = "windows")]
 +    command.creation_flags(0x08000000);
-+    command
-+        .spawn()
-+        .map(|_| ())
-+        .map_err(|error| format!("Unable to start SeeSeeYou sync: {error}"))
++    let status = command
++        .status()
++        .map_err(|error| format!("Unable to start SeeSeeYou sync: {error}"))?;
++    if status.success() {
++        Ok(())
++    } else {
++        Err(format!("SeeSeeYou sync exited with status {status}"))
++    }
 +}
 +
-+fn start_sync_scheduler() {
-+    if SYNC_SCHEDULER_STARTED.set(()).is_err() {
++fn wait_for_local_server(port: u16) {
++    let address = SocketAddr::from(([127, 0, 0, 1], port));
++    while TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_err() {
++        thread::sleep(Duration::from_millis(250));
++    }
++    info!("Local SeeSeeYou server is ready on port {port}");
++}
++
++fn queue_sync_trigger(sender: &mpsc::SyncSender<()>) -> Result<(), String> {
++    match sender.try_send(()) {
++        Ok(()) | Err(mpsc::TrySendError::Full(())) => Ok(()),
++        Err(mpsc::TrySendError::Disconnected(())) => {
++            Err("SeeSeeYou sync scheduler is unavailable".to_string())
++        }
++    }
++}
++
++fn trigger_sync() -> Result<(), String> {
++    let sender = SYNC_TRIGGER
++        .get()
++        .ok_or_else(|| "SeeSeeYou sync scheduler is not ready".to_string())?;
++    queue_sync_trigger(sender)
++}
++
++fn start_sync_scheduler(port: u16) {
++    let (sender, receiver) = mpsc::sync_channel(1);
++    if SYNC_TRIGGER.set(sender).is_err() {
 +        return;
 +    }
-+    thread::spawn(|| loop {
-+        if let Err(error) = run_sync_once() {
-+            warn!("{error}");
++
++    thread::spawn(move || {
++        wait_for_local_server(port);
++        loop {
++            // Coalesce any number of requests into one run. The worker waits for
++            // each child to exit, so state.json and the canonical outbox never
++            // have two desktop-managed sync processes writing at the same time.
++            while receiver.try_recv().is_ok() {}
++            if let Err(error) = run_sync_once() {
++                warn!("{error}");
++            }
++            match receiver.recv_timeout(Duration::from_secs(300)) {
++                Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
++                Err(mpsc::RecvTimeoutError::Disconnected) => break,
++            }
 +        }
-+        thread::sleep(Duration::from_secs(300));
 +    });
 +}
 +
@@ -249,7 +292,7 @@ index a51b1f0..8a90ada 100644
 +        .map_err(|error| format!("Unable to encode sync configuration: {error}"))?;
 +    write(sync_config_path(), serialized)
 +        .map_err(|error| format!("Unable to save sync configuration: {error}"))?;
-+    run_sync_once()
++    trigger_sync()
 +}
 +
 +#[tauri::command]
@@ -264,7 +307,7 @@ index a51b1f0..8a90ada 100644
  fn init_tray_id(id: TrayIconId) {
      TRAY_ID
          .set(TrayIdWrapper(id))
-@@ -232,8 +381,8 @@ pub fn handle_first_run() {
+@@ -232,8 +421,8 @@ pub fn handle_first_run() {
              let app = &*get_app_handle().lock().expect("Failed to get app handle");
              app.notification()
                  .builder()
@@ -275,7 +318,7 @@ index a51b1f0..8a90ada 100644
                  .show()
                  .expect("Failed to show first run notification");
              if let Some(window) = app.webview_windows().get("main") {
-@@ -251,6 +400,8 @@ fn build_dashboard_url(port: u16, api_key: Option<&str>) -> Url {
+@@ -251,6 +440,8 @@ fn build_dashboard_url(port: u16, api_key: Option<&str>) -> Url {
          url.query_pairs_mut().append_pair("token", api_key);
      }
  
@@ -284,7 +327,7 @@ index a51b1f0..8a90ada 100644
      url
  }
  
-@@ -469,7 +620,17 @@ pub(crate) fn get_config() -> &'static UserConfig {
+@@ -469,7 +660,17 @@ pub(crate) fn get_config() -> &'static UserConfig {
  
              // Try to parse the config file
              match toml::from_str::<UserConfig>(&config_str) {
@@ -303,7 +346,7 @@ index a51b1f0..8a90ada 100644
                  Err(e) => {
                      warn!("Failed to parse config file: {}. Using default config.", e);
  
-@@ -677,11 +838,16 @@ fn greet(name: &str) -> String {
+@@ -677,11 +878,16 @@ fn greet(name: &str) -> String {
  }
  
  #[tauri::command]
@@ -324,7 +367,7 @@ index a51b1f0..8a90ada 100644
  }
  
  /// Downloads and installs an update, showing a progress dialog.
-@@ -797,9 +963,7 @@ async fn download_and_install_update(handle: AppHandle, update: tauri_plugin_upd
+@@ -797,9 +1003,7 @@ async fn download_and_install_update(handle: AppHandle, update: tauri_plugin_upd
  /// Returns true if the user has opted out of update checks via
  /// `AW_DISABLE_AUTO_UPDATE` (truthy values: 1, true, yes, on).
  fn updates_disabled_via_env() -> bool {
@@ -335,18 +378,17 @@ index a51b1f0..8a90ada 100644
  }
  
  #[tauri::command]
-@@ -906,6 +1070,10 @@ pub fn run() {
+@@ -906,6 +1110,9 @@ pub fn run() {
                  //TODO: Some of this setup could run concurrently. Could slash a few 100ms in startup?
                  init_app_handle(app.handle().clone());
                  let user_config = get_config();
 +                if let Err(error) = migrate_sync_config_to_port_5600() {
 +                    warn!("{error}");
 +                }
-+                start_sync_scheduler();
                  // Bring the OS login item in line with `[autostart] enabled`.
                  autostart::sync_from_config(app.handle());
  
-@@ -950,9 +1118,11 @@ pub fn run() {
+@@ -950,9 +1157,11 @@ pub fn run() {
                  };
                  if !is_port_available(port).expect("Failed to check port availability") {
                      app.dialog()
@@ -360,7 +402,15 @@ index a51b1f0..8a90ada 100644
                          .show(|_| {});
                      panic!("Port {} is already in use", port);
                  }
-@@ -979,36 +1149,38 @@ pub fn run() {
+@@ -969,6 +1178,7 @@ pub fn run() {
+                 }
+                 let dashboard_url = build_dashboard_url(port, dashboard_api_key);
+                 tauri::async_runtime::spawn(build_rocket(server_state, aw_config).launch());
++                start_sync_scheduler(port);
+                 // Create main window programmatically to attach initialization script.
+                 // The script intercepts clicks on external links and opens them in the system
+                 // browser via the open_external Tauri command. This approach works reliably for
+@@ -979,36 +1189,38 @@ pub fn run() {
                      "main",
                      tauri::WebviewUrl::External(dashboard_url),
                  )
@@ -414,7 +464,7 @@ index a51b1f0..8a90ada 100644
                      .expect("Failed to create tray menu");
  
                  #[cfg(not(target_os = "windows"))]
-@@ -1030,7 +1202,7 @@ pub fn run() {
+@@ -1030,7 +1242,7 @@ pub fn run() {
                      )
                      .menu(&menu)
                      .show_menu_on_left_click(true)
@@ -423,7 +473,7 @@ index a51b1f0..8a90ada 100644
                  let tray = tray_builder.build(app).expect("Failed to create tray");
  
                  init_tray_id(tray.id().clone());
-@@ -1186,7 +1358,10 @@ pub fn run() {
+@@ -1186,7 +1398,10 @@ pub fn run() {
              restart_app,
              close_update_progress,
              get_autostart_enabled,
@@ -435,15 +485,17 @@ index a51b1f0..8a90ada 100644
          ])
          .run(tauri::generate_context!())
          .expect("error while running tauri application");
-@@ -1194,13 +1369,16 @@ pub fn run() {
+@@ -1194,13 +1409,18 @@ pub fn run() {
  
  #[cfg(test)]
  mod tests {
 -    use super::build_dashboard_url;
 +    use super::{
-+        build_dashboard_url, migrate_sync_config_local_api_url, DesktopSyncConfig,
-+        DEFAULT_LOCAL_API_URL,
++        build_dashboard_url, migrate_sync_config_local_api_url, queue_sync_trigger,
++        wait_for_local_server, DesktopSyncConfig, DEFAULT_LOCAL_API_URL,
 +    };
++    use std::net::TcpListener;
++    use std::sync::mpsc;
  
      #[test]
      fn build_dashboard_url_omits_token_when_auth_disabled() {
@@ -454,7 +506,7 @@ index a51b1f0..8a90ada 100644
          );
      }
  
-@@ -1208,7 +1386,7 @@ mod tests {
+@@ -1208,7 +1428,7 @@ mod tests {
      fn build_dashboard_url_ignores_empty_api_keys() {
          assert_eq!(
              build_dashboard_url(5600, Some("")).as_str(),
@@ -463,7 +515,7 @@ index a51b1f0..8a90ada 100644
          );
      }
  
-@@ -1216,10 +1394,62 @@ mod tests {
+@@ -1216,10 +1436,81 @@ mod tests {
      fn build_dashboard_url_appends_encoded_token() {
          assert_eq!(
              build_dashboard_url(5600, Some("secret+ /?=&")).as_str(),
@@ -522,6 +574,25 @@ index a51b1f0..8a90ada 100644
 +        )
 +        .expect("legacy sync config should remain readable");
 +        assert_eq!(config.team_id, None);
++    }
++
++    #[test]
++    fn sync_config_trigger_requests_are_coalesced() {
++        let (sender, receiver) = mpsc::sync_channel(1);
++        assert!(queue_sync_trigger(&sender).is_ok());
++        assert!(queue_sync_trigger(&sender).is_ok());
++        assert_eq!(receiver.try_recv(), Ok(()));
++        assert!(matches!(
++            receiver.try_recv(),
++            Err(mpsc::TryRecvError::Empty)
++        ));
++    }
++
++    #[test]
++    fn sync_config_server_readiness_detects_bound_port() {
++        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
++        let port = listener.local_addr().expect("read test address").port();
++        wait_for_local_server(port);
 +    }
 +
      #[test]
