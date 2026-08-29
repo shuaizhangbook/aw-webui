@@ -46,7 +46,9 @@ jobs:
           git -C activitywatch submodule update --init --recursive --depth 1
 
       - name: Check out the SeeSeeYou sync agent
-        run: git clone --depth 1 https://github.com/shuaizhangbook/seeseeyou.git seeseeyou
+        run: |
+          git clone https://github.com/shuaizhangbook/seeseeyou.git seeseeyou
+          git -C seeseeyou checkout 8b9d05e0a2665a2b2734797dbd02bf44039e8455
 
       - name: Apply SeeSeeYou desktop customizations
         run: |
@@ -62,6 +64,21 @@ jobs:
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
           cp custom-webui/desktop/aw-tauri.iss activitywatch/scripts/package/aw-tauri.iss
 
+      - name: Verify the desktop port migration contract
+        run: |
+          grep -F 'port: 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'Migrated SeeSeeYou local port from 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'Migrated SeeSeeYou sync API from port 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'commands.allow = ["get_sync_status"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F 'commands.allow = ["configure_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F 'commands.allow = ["clear_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F '"http://localhost:5600/*"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
+          grep -F '"allow-get-sync-status"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
+          grep -F '"allow-configure-sync"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
+          grep -F '"allow-clear-sync"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
+          grep -F 'target.origin === window.location.origin' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F '"version": "0.1.2"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
@@ -76,6 +93,16 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Test SeeSeeYou Google sign-in helpers
+        working-directory: custom-webui
+        run: |
+          npm ci
+          npm run test:unit -- --runInBand test/unit/seeseeyou.test.js
+
+      - name: Test desktop sync configuration compatibility
+        working-directory: activitywatch/aw-tauri
+        run: cargo test --manifest-path src-tauri/Cargo.toml sync_config_ --lib
 
       - name: Install packaging dependencies
         run: |
@@ -117,8 +144,8 @@ jobs:
           bash scripts/package/package-all.sh
           setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
           zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
-          mv "$setup_file" dist/SeeSeeYou-0.1.1-windows-x86_64-setup.exe
-          mv "$zip_file" dist/SeeSeeYou-0.1.1-windows-x86_64-portable.zip
+          mv "$setup_file" dist/SeeSeeYou-0.1.2-windows-x86_64-setup.exe
+          mv "$zip_file" dist/SeeSeeYou-0.1.2-windows-x86_64-portable.zip
 
       - name: Show generated packages
         working-directory: activitywatch
@@ -127,9 +154,9 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: SeeSeeYou-Windows
+          name: SeeSeeYou-0.1.2-Windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/SeeSeeYou-0.1.1-windows-x86_64-setup.exe
-            activitywatch/dist/SeeSeeYou-0.1.1-windows-x86_64-portable.zip
+            activitywatch/dist/SeeSeeYou-0.1.2-windows-x86_64-setup.exe
+            activitywatch/dist/SeeSeeYou-0.1.2-windows-x86_64-portable.zip

@@ -6,11 +6,13 @@ const INSTALLATION_ID_KEY = 'seeseeyou-desktop-installation-id';
 
 export class SeeSeeYouApiError extends Error {
   status: number;
+  code: string;
 
-  constructor(message: string, statusCode = 0) {
+  constructor(message: string, statusCode = 0, code = '') {
     super(message);
     this.name = 'SeeSeeYouApiError';
     this.status = statusCode;
+    this.code = code;
   }
 }
 
@@ -65,7 +67,20 @@ export async function seeSeeYouRequest<T>(path: string, options: RequestInit = {
 
   if (!response.ok) {
     const detail = body && typeof body === 'object' ? body.detail || body.message : body;
-    throw new SeeSeeYouApiError(detail || `Request failed (${response.status})`, response.status);
+    const detailObject =
+      detail && typeof detail === 'object' ? (detail as Record<string, unknown>) : null;
+    const message =
+      detailObject && typeof detailObject.message === 'string'
+        ? detailObject.message
+        : typeof detail === 'string'
+        ? detail
+        : '';
+    const code = detailObject ? String(detailObject.code || '') : '';
+    throw new SeeSeeYouApiError(
+      message || `Request failed (${response.status})`,
+      response.status,
+      code
+    );
   }
 
   return body as T;
@@ -79,6 +94,38 @@ export async function loginToSeeSeeYou(
   const result = await seeSeeYouRequest<{ token: string }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
+  });
+  setSeeSeeYouToken(result.token, remember);
+}
+
+export interface GoogleDesktopAuthStart {
+  authorization_url: string;
+  poll_token: string;
+  expires_in: number;
+}
+
+export interface GoogleAuthStatus {
+  ok: boolean;
+  status: 'pending' | 'ready';
+  mode?: 'LOGIN' | 'SIGNUP';
+  email?: string;
+}
+
+export async function startGoogleDesktopAuth(): Promise<GoogleDesktopAuthStart> {
+  return seeSeeYouRequest<GoogleDesktopAuthStart>('/auth/google/start?client=desktop');
+}
+
+export async function getGoogleDesktopAuthStatus(pollToken: string): Promise<GoogleAuthStatus> {
+  return seeSeeYouRequest<GoogleAuthStatus>('/auth/google/status', {
+    method: 'POST',
+    body: JSON.stringify({ poll_token: pollToken }),
+  });
+}
+
+export async function completeGoogleDesktopAuth(pollToken: string, remember = true): Promise<void> {
+  const result = await seeSeeYouRequest<{ token: string }>('/auth/google/complete', {
+    method: 'POST',
+    body: JSON.stringify({ poll_token: pollToken }),
   });
   setSeeSeeYouToken(result.token, remember);
 }
@@ -101,13 +148,31 @@ export interface DesktopEnrollment {
   };
 }
 
+export interface DesktopTeam {
+  team_id: string;
+  name: string;
+  role: string;
+}
+
+export interface DesktopTeams {
+  employee_id: string;
+  items: DesktopTeam[];
+}
+
 export interface DesktopSyncConfig {
   server_url: string;
   local_api_url: string;
   device_id: string;
   employee_id: string;
+  team_id: string;
   device_key: string;
   hmac_secret: string;
+}
+
+export interface DesktopSyncStatus {
+  configured: boolean;
+  employee_id?: string | null;
+  team_id?: string | null;
 }
 
 function newInstallationId(): string {
@@ -133,10 +198,15 @@ export function detectDesktopPlatform(): string {
   return 'Desktop';
 }
 
-export async function autoEnrollDesktop(): Promise<DesktopEnrollment> {
+export async function getMyDesktopTeams(): Promise<DesktopTeams> {
+  return seeSeeYouRequest<DesktopTeams>('/me/teams');
+}
+
+export async function autoEnrollDesktop(teamId: string): Promise<DesktopEnrollment> {
   const platform = detectDesktopPlatform();
   return seeSeeYouRequest<DesktopEnrollment>('/devices/auto-enroll', {
     method: 'POST',
+    headers: { 'X-Team-ID': teamId },
     body: JSON.stringify({
       installation_id: getDesktopInstallationId(),
       device_name: `SeeSeeYou ${platform}`,
@@ -152,10 +222,36 @@ function tauriInvoke():
   return typeof candidate === 'function' ? candidate : null;
 }
 
-export async function getDesktopSyncStatus(): Promise<boolean | null> {
+export async function openGoogleAuthorizationUrl(url: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch (_error) {
+    throw new Error('Invalid Google authorization URL');
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'accounts.google.com') {
+    throw new Error('Untrusted Google authorization URL');
+  }
+
+  const invoke = tauriInvoke();
+  if (invoke) {
+    await invoke('open_external', { url: parsed.toString() });
+    return;
+  }
+
+  const opened = window.open(parsed.toString(), '_blank', 'noopener,noreferrer');
+  if (!opened) throw new Error('Unable to open the system browser');
+}
+
+export async function getDesktopSyncStatus(): Promise<DesktopSyncStatus | null> {
   const invoke = tauriInvoke();
   if (!invoke) return null;
-  return Boolean(await invoke('get_sync_status'));
+  const result = await invoke('get_sync_status');
+  if (typeof result === 'boolean') return { configured: result };
+  if (result && typeof result === 'object' && 'configured' in result) {
+    return result as DesktopSyncStatus;
+  }
+  return { configured: false };
 }
 
 export async function configureDesktopSync(config: DesktopSyncConfig): Promise<boolean> {

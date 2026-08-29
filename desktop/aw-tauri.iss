@@ -5,7 +5,7 @@
 ; and display name.
 
 #define MyAppName "SeeSeeYou"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "SeeSeeYou"
 #define MyAppURL "https://watch.sding.me/"
 #define MyAppExeName "aw-tauri.exe"
