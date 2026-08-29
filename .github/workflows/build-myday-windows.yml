@@ -94,6 +94,12 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Test SeeSeeYou Google sign-in helpers
+        working-directory: custom-webui
+        run: |
+          npm ci
+          npm run test:unit -- --runInBand test/unit/seeseeyou.test.js
+
       - name: Test desktop sync configuration compatibility
         working-directory: activitywatch/aw-tauri
         run: cargo test --manifest-path src-tauri/Cargo.toml sync_config_ --lib
