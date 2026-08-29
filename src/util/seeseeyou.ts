@@ -4,6 +4,7 @@ const TOKEN_KEY = 'seeseeyou-myday-session';
 const PERSISTENT_TOKEN_KEY = 'seeseeyou-myday-session-persistent';
 const INSTALLATION_ID_KEY = 'seeseeyou-desktop-installation-id';
 const SELECTED_TEAM_ID_PREFIX = 'seeseeyou-current-team-id';
+const DESKTOP_SYNC_BINDING_KEY = 'seeseeyou-desktop-sync-binding';
 
 export class SeeSeeYouApiError extends Error {
   status: number;
@@ -246,16 +247,17 @@ export async function getDesktopSyncStatus(): Promise<boolean | null> {
 }
 
 export async function getDesktopSyncBinding(): Promise<DesktopSyncBinding | null> {
-  const invoke = tauriInvoke();
-  if (!invoke) return null;
+  const value = persistentStorage()?.getItem(DESKTOP_SYNC_BINDING_KEY);
+  if (!value) return null;
   try {
-    const value = (await invoke('get_sync_binding')) as DesktopSyncBinding | null;
-    if (!value || !value.employee_id || !value.team_id) return null;
+    const binding = JSON.parse(value) as DesktopSyncBinding;
+    if (!binding?.employee_id || !binding?.team_id) return null;
     return {
-      employee_id: String(value.employee_id),
-      team_id: String(value.team_id),
+      employee_id: String(binding.employee_id),
+      team_id: String(binding.team_id),
     };
   } catch {
+    persistentStorage()?.removeItem(DESKTOP_SYNC_BINDING_KEY);
     return null;
   }
 }
@@ -263,13 +265,22 @@ export async function getDesktopSyncBinding(): Promise<DesktopSyncBinding | null
 export async function configureDesktopSync(config: DesktopSyncConfig): Promise<boolean> {
   const invoke = tauriInvoke();
   if (!invoke) return false;
-  await invoke('configure_sync', { config });
+  const { team_id: teamId, ...nativeConfig } = config;
+  await invoke('configure_sync', { config: nativeConfig });
+  persistentStorage()?.setItem(
+    DESKTOP_SYNC_BINDING_KEY,
+    JSON.stringify({ employee_id: config.employee_id, team_id: teamId })
+  );
   return true;
 }
 
 export async function clearDesktopSync(): Promise<void> {
   const invoke = tauriInvoke();
-  if (invoke) await invoke('clear_sync');
+  try {
+    if (invoke) await invoke('clear_sync');
+  } finally {
+    persistentStorage()?.removeItem(DESKTOP_SYNC_BINDING_KEY);
+  }
 }
 
 export function apiBaseToServerUrl(apiBase = getSeeSeeYouApiBase()): string {

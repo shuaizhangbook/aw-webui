@@ -1,5 +1,8 @@
 import {
   autoEnrollDesktop,
+  clearDesktopSync,
+  configureDesktopSync,
+  getDesktopSyncBinding,
   getSeeSeeYouEnrollmentContext,
   getSelectedSeeSeeYouTeamId,
   resolveSeeSeeYouTeamSelection,
@@ -27,6 +30,7 @@ describe('SeeSeeYou API client', () => {
   });
 
   afterEach(() => {
+    delete window.__TAURI_INTERNALS__;
     jest.restoreAllMocks();
   });
 
@@ -109,5 +113,40 @@ describe('SeeSeeYou API client', () => {
     expect(resolveSeeSeeYouTeamSelection(twoTeams)).toBe('');
     expect(resolveSeeSeeYouTeamSelection(twoTeams, 'team-b')).toBe('team-b');
     expect(resolveSeeSeeYouTeamSelection(twoTeams, 'removed-team')).toBe('');
+  });
+
+  test('keeps the employee and team binding in web storage without a new native command', async () => {
+    const invoke = jest.fn().mockResolvedValue(undefined);
+    window.__TAURI_INTERNALS__ = { invoke };
+    const config = {
+      server_url: 'https://watch.example',
+      local_api_url: 'http://127.0.0.1:5601/api/0',
+      device_id: 'device-1',
+      employee_id: 'employee-1',
+      team_id: 'team-b',
+      device_key: 'device-token',
+      hmac_secret: 'hmac-secret',
+    };
+
+    await expect(configureDesktopSync(config)).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith('configure_sync', {
+      config: {
+        server_url: config.server_url,
+        local_api_url: config.local_api_url,
+        device_id: config.device_id,
+        employee_id: config.employee_id,
+        device_key: config.device_key,
+        hmac_secret: config.hmac_secret,
+      },
+    });
+    await expect(getDesktopSyncBinding()).resolves.toEqual({
+      employee_id: 'employee-1',
+      team_id: 'team-b',
+    });
+
+    await clearDesktopSync();
+
+    expect(invoke).toHaveBeenLastCalledWith('clear_sync');
+    await expect(getDesktopSyncBinding()).resolves.toBeNull();
   });
 });

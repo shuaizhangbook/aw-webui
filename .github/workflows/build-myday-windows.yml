@@ -2,19 +2,6 @@ name: Build SeeSeeYou Windows desktop
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - master
-    paths:
-      - .github/workflows/build-myday-windows.yml
-      - desktop/**
-      - desktop/assets/seeseeyou-icon.*
-      - src/App.vue
-      - src/components/Header.vue
-      - src/i18n/**
-      - src/route.js
-      - src/util/seeseeyou.ts
-      - src/views/MyDay.vue
   push:
     branches:
       - master
