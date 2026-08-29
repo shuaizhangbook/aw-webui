@@ -2,7 +2,6 @@ const DEFAULT_API_BASE = process.env.VUE_APP_SEESEEYOU_API_BASE || 'https://watc
 
 const TOKEN_KEY = 'seeseeyou-myday-session';
 const PERSISTENT_TOKEN_KEY = 'seeseeyou-myday-session-persistent';
-const API_BASE_KEY = 'seeseeyou-myday-api-base';
 const INSTALLATION_ID_KEY = 'seeseeyou-desktop-installation-id';
 
 export class SeeSeeYouApiError extends Error {
@@ -24,17 +23,7 @@ function persistentStorage(): Storage | null {
 }
 
 export function getSeeSeeYouApiBase(): string {
-  const configured = persistentStorage()?.getItem(API_BASE_KEY)?.trim();
-  return (configured || DEFAULT_API_BASE).replace(/\/+$/, '');
-}
-
-export function setSeeSeeYouApiBase(value: string): void {
-  const normalized = value.trim().replace(/\/+$/, '');
-  if (!normalized) {
-    persistentStorage()?.removeItem(API_BASE_KEY);
-    return;
-  }
-  persistentStorage()?.setItem(API_BASE_KEY, normalized);
+  return DEFAULT_API_BASE.replace(/\/+$/, '');
 }
 
 export function getSeeSeeYouToken(): string {
@@ -66,9 +55,7 @@ export async function seeSeeYouRequest<T>(path: string, options: RequestInit = {
   try {
     response = await fetch(`${getSeeSeeYouApiBase()}${path}`, { ...options, headers });
   } catch (error) {
-    throw new SeeSeeYouApiError(
-      error instanceof Error ? error.message : 'Unable to reach the SeeSeeYou service'
-    );
+    throw new SeeSeeYouApiError('Unable to reach the SeeSeeYou service');
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -116,6 +103,7 @@ export interface DesktopEnrollment {
 
 export interface DesktopSyncConfig {
   server_url: string;
+  local_api_url: string;
   device_id: string;
   employee_id: string;
   device_key: string;

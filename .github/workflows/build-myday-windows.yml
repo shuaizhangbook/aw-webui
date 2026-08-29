@@ -117,8 +117,8 @@ jobs:
           bash scripts/package/package-all.sh
           setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
           zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
-          mv "$setup_file" dist/SeeSeeYou-0.1.0-windows-x86_64-setup.exe
-          mv "$zip_file" dist/SeeSeeYou-0.1.0-windows-x86_64-portable.zip
+          mv "$setup_file" dist/SeeSeeYou-0.1.1-windows-x86_64-setup.exe
+          mv "$zip_file" dist/SeeSeeYou-0.1.1-windows-x86_64-portable.zip
 
       - name: Show generated packages
         working-directory: activitywatch
@@ -131,5 +131,5 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/SeeSeeYou-0.1.0-windows-x86_64-setup.exe
-            activitywatch/dist/SeeSeeYou-0.1.0-windows-x86_64-portable.zip
+            activitywatch/dist/SeeSeeYou-0.1.1-windows-x86_64-setup.exe
+            activitywatch/dist/SeeSeeYou-0.1.1-windows-x86_64-portable.zip

@@ -2,68 +2,57 @@ import { shallowMount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import Header from '~/components/Header.vue';
 
-const mockEnsureLoaded = jest.fn().mockResolvedValue(undefined);
+const mockSetAppLocale = jest.fn();
 const passthroughStub = { template: '<div><slot /></div>' };
 
-jest.mock('~/stores/buckets', () => ({
-  useBucketsStore: () => ({
-    ensureLoaded: mockEnsureLoaded,
-    buckets: [],
-  }),
+jest.mock('~/i18n', () => ({
+  setAppLocale: locale => mockSetAppLocale(locale),
 }));
 
-describe('Header research edition badge', () => {
-  afterEach(() => {
-    delete global.AW_RESEARCH_EDITION;
-  });
-
+describe('SeeSeeYou header', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    mockEnsureLoaded.mockClear();
+    mockSetAppLocale.mockClear();
   });
 
-  function mountHeader(buildFlag) {
-    if (buildFlag === undefined) {
-      delete global.AW_RESEARCH_EDITION;
-    } else {
-      global.AW_RESEARCH_EDITION = buildFlag;
-    }
-
+  function mountHeader(locale = 'zh-CN') {
     return shallowMount(Header, {
       mocks: {
-        $isAndroid: false,
+        $i18n: { locale },
         $t: key => key,
       },
       stubs: {
         'b-navbar': passthroughStub,
         'b-navbar-nav': passthroughStub,
         'b-navbar-brand': passthroughStub,
-        'b-navbar-toggle': passthroughStub,
-        'b-collapse': passthroughStub,
-        'b-nav-item': passthroughStub,
-        'b-nav-item-dropdown': passthroughStub,
-        'b-dropdown-item': passthroughStub,
-        'b-badge': passthroughStub,
         icon: passthroughStub,
       },
     });
   }
 
-  test('renders a badge in both brand sites for research builds', () => {
-    const wrapper = mountHeader(true);
+  test('only exposes the SeeSeeYou My Day surface', () => {
+    const text = mountHeader().text();
 
-    expect(wrapper.findAll('[data-testid="research-edition-badge"]')).toHaveLength(2);
+    expect(text).toContain('SeeSeeYou');
+    expect(text).toContain('nav.myDay');
+    expect(text).not.toContain('nav.activity');
+    expect(text).not.toContain('nav.timeline');
+    expect(text).not.toContain('nav.settings');
   });
 
-  test('renders no badge for standard builds', () => {
-    const wrapper = mountHeader(false);
+  test('offers Chinese and English without technical navigation', () => {
+    const buttons = mountHeader().findAll('.language-switch button');
 
-    expect(wrapper.findAll('[data-testid="research-edition-badge"]')).toHaveLength(0);
+    expect(buttons).toHaveLength(2);
+    expect(buttons.at(0).text()).toBe('中文');
+    expect(buttons.at(1).text()).toBe('EN');
   });
 
-  test('renders no badge when the build flag is absent', () => {
-    const wrapper = mountHeader(undefined);
+  test('switches the application locale', async () => {
+    const wrapper = mountHeader();
 
-    expect(wrapper.findAll('[data-testid="research-edition-badge"]')).toHaveLength(0);
+    await wrapper.findAll('.language-switch button').at(1).trigger('click');
+
+    expect(mockSetAppLocale).toHaveBeenCalledWith('en');
   });
 });
