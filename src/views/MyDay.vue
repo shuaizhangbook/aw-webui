@@ -42,6 +42,18 @@
         </div>
       </div>
       <form class="login-card" @submit.prevent="login">
+        <button
+          class="google-button"
+          type="button"
+          :disabled="loading || googleLoading"
+          @click="loginWithGoogle"
+        >
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span>{{ googleLoading ? copy.googleWaiting : copy.googleSignIn }}</span>
+        </button>
+        <div class="auth-divider">
+          <span>{{ copy.orPassword }}</span>
+        </div>
         <label>
           <span>{{ copy.account }}</span>
           <input v-model.trim="credentials.username" autocomplete="username" required />
@@ -69,6 +81,27 @@
 
     <template v-else>
       <p v-if="error" class="error-banner">{{ error }}</p>
+      <p v-if="syncError" class="error-banner">{{ syncError }}</p>
+
+      <section v-if="teamSelectionRequired" class="team-picker">
+        <div>
+          <span class="section-kicker">{{ copy.syncWorkspace }}</span>
+          <h3>{{ copy.chooseTeam }}</h3>
+          <p>{{ copy.chooseTeamBody }}</p>
+        </div>
+        <div class="team-options">
+          <button
+            v-for="team in availableTeams"
+            :key="team.team_id"
+            type="button"
+            :disabled="syncState === 'connecting'"
+            @click="selectSyncTeam(team)"
+          >
+            <strong>{{ team.name || team.team_id }}</strong>
+            <span>{{ team.team_id }}</span>
+          </button>
+        </div>
+      </section>
 
       <section class="summary-grid">
         <article v-for="card in summaryCards" :key="card.key" class="summary-card">
@@ -179,13 +212,19 @@ import {
   autoEnrollDesktop,
   clearDesktopSync,
   configureDesktopSync,
+  completeGoogleDesktopAuth,
+  DesktopTeam,
   getDesktopSyncStatus,
+  getGoogleDesktopAuthStatus,
+  getMyDesktopTeams,
   getSeeSeeYouApiBase,
   getSeeSeeYouToken,
   loginToSeeSeeYou,
   logoutFromSeeSeeYou,
+  openGoogleAuthorizationUrl,
   seeSeeYouRequest,
   SeeSeeYouApiError,
+  startGoogleDesktopAuth,
 } from '~/util/seeseeyou';
 
 interface WorkTask {
@@ -211,6 +250,10 @@ interface WorkData {
   backlog_count?: number;
 }
 
+function wait(milliseconds: number): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+}
+
 const COPY = {
   zh: {
     subtitle: '把今天真正重要的事情放在一个地方',
@@ -223,6 +266,9 @@ const COPY = {
     account: '账号或邮箱',
     password: '密码',
     remember: '在这台电脑保持登录',
+    googleSignIn: '使用 Google 账号登录',
+    googleWaiting: '请在浏览器完成 Google 登录…',
+    orPassword: '或使用账号密码',
     signingIn: '正在连接…',
     signIn: '登录 SeeSeeYou',
     loginNote: '首次登录会自动连接这台电脑并同步在线状态，无需设备码。',
@@ -230,6 +276,13 @@ const COPY = {
     autoSyncActive: '同步已开启',
     autoSyncPending: '准备同步',
     autoSyncFailed: '同步暂时不可用',
+    syncWorkspace: '本机同步空间',
+    chooseTeam: '选择这台电脑所属的团队',
+    chooseTeamBody: '这项选择只用于本机活动同步；团队之间的数据不会混在一起。',
+    noActiveTeam: '当前账号没有可用于同步的有效团队。',
+    syncAccountMismatch: '本机同步仍绑定另一个账号。请先退出登录，再使用当前账号重新登录。',
+    syncTeamUnavailable: '这台电脑原来绑定的团队已不可用，请联系管理员。',
+    syncTeamConflict: '这台电脑已绑定其他团队。为保护历史数据，不能直接切换团队。',
     refresh: '刷新',
     logout: '退出',
     todayFocus: '今日重点',
@@ -247,6 +300,8 @@ const COPY = {
     hoursPrompt: '请输入实际用时（小时，按 0.25 递增）',
     invalidHours: '请输入 0.25 到 999.99 之间、按 0.25 递增的数字。',
     loginFailed: '暂时无法登录，请稍后重试。',
+    googleLoginFailed: 'Google 登录未完成，请重试。',
+    googleLoginTimeout: 'Google 登录等待超时，请重新开始。',
     loadFailed: '暂时无法加载 My Day，请稍后重试。',
     actionFailed: '暂时无法更新任务，请稍后重试。',
     networkError: '暂时无法连接服务，请检查网络后重试。',
@@ -278,6 +333,9 @@ const COPY = {
     account: 'Account or email',
     password: 'Password',
     remember: 'Keep me signed in on this computer',
+    googleSignIn: 'Continue with Google',
+    googleWaiting: 'Finish signing in with Google in your browser…',
+    orPassword: 'or use your account password',
     signingIn: 'Connecting…',
     signIn: 'Sign in to SeeSeeYou',
     loginNote:
@@ -286,6 +344,16 @@ const COPY = {
     autoSyncActive: 'Sync enabled',
     autoSyncPending: 'Preparing sync',
     autoSyncFailed: 'Sync temporarily unavailable',
+    syncWorkspace: 'Local sync workspace',
+    chooseTeam: 'Choose this computer’s team',
+    chooseTeamBody:
+      'This selection is only for local activity sync. Data is never mixed between teams.',
+    noActiveTeam: 'This account has no active team available for sync.',
+    syncAccountMismatch:
+      'Local sync is still connected to another account. Sign out, then sign in with this account again.',
+    syncTeamUnavailable: 'The team previously connected to this computer is no longer available.',
+    syncTeamConflict:
+      'This computer is already connected to another team and cannot be switched without a new device identity.',
     refresh: 'Refresh',
     logout: 'Sign out',
     todayFocus: "Today's focus",
@@ -303,6 +371,8 @@ const COPY = {
     hoursPrompt: 'Actual hours (increments of 0.25)',
     invalidHours: 'Enter a number from 0.25 to 999.99 in increments of 0.25.',
     loginFailed: 'Unable to sign in right now. Please try again.',
+    googleLoginFailed: 'Google sign-in was not completed. Please try again.',
+    googleLoginTimeout: 'Google sign-in timed out. Please start again.',
     loadFailed: 'Unable to load My Day right now. Please try again.',
     actionFailed: 'Unable to update the task right now. Please try again.',
     networkError: 'Unable to reach the service. Check your connection and try again.',
@@ -333,6 +403,12 @@ export default {
       authenticated: Boolean(getSeeSeeYouToken()),
       syncState: 'pending' as 'pending' | 'connecting' | 'active' | 'error',
       loading: false,
+      googleLoading: false,
+      googleAuthCancelled: false,
+      availableTeams: [] as DesktopTeam[],
+      currentEmployeeId: '',
+      teamSelectionRequired: false,
+      syncError: '',
       error: '',
       busyTaskId: null as number | null,
       workData: null as WorkData | null,
@@ -412,6 +488,9 @@ export default {
       await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
     }
   },
+  beforeDestroy() {
+    this.googleAuthCancelled = true;
+  },
   methods: {
     tasksFor(column: string): WorkTask[] {
       return this.workData?.tasks?.[column] || [];
@@ -438,14 +517,46 @@ export default {
           this.credentials.password,
           this.rememberLogin
         );
-        this.authenticated = true;
         this.credentials.password = '';
-        await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+        await this.finishLogin();
       } catch (error) {
         this.error = this.friendlyError(error, this.copy.loginFailed, true);
       } finally {
         this.loading = false;
       }
+    },
+    async loginWithGoogle() {
+      if (this.googleLoading) return;
+      this.googleLoading = true;
+      this.googleAuthCancelled = false;
+      this.error = '';
+      try {
+        const auth = await startGoogleDesktopAuth();
+        await openGoogleAuthorizationUrl(auth.authorization_url);
+        const lifetimeSeconds = Math.max(30, Math.min(Number(auth.expires_in) || 600, 600));
+        const deadline = Date.now() + lifetimeSeconds * 1000;
+        while (!this.googleAuthCancelled && Date.now() < deadline) {
+          const authStatus = await getGoogleDesktopAuthStatus(auth.poll_token);
+          if (authStatus.status === 'ready') {
+            await completeGoogleDesktopAuth(auth.poll_token, this.rememberLogin);
+            await this.finishLogin();
+            return;
+          }
+          await wait(1500);
+        }
+        if (!this.googleAuthCancelled) this.error = this.copy.googleLoginTimeout;
+      } catch (error) {
+        if (!this.googleAuthCancelled) {
+          this.error = this.friendlyError(error, this.copy.googleLoginFailed, true);
+        }
+      } finally {
+        this.googleLoading = false;
+      }
+    },
+    async finishLogin() {
+      this.authenticated = true;
+      this.syncError = '';
+      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
     },
     async loadWork() {
       this.loading = true;
@@ -455,6 +566,7 @@ export default {
       } catch (error) {
         if (error instanceof SeeSeeYouApiError && error.status === 401) {
           logoutFromSeeSeeYou();
+          await clearDesktopSync().catch(() => undefined);
           this.authenticated = false;
           this.workData = null;
         }
@@ -469,30 +581,103 @@ export default {
       this.authenticated = false;
       this.workData = null;
       this.error = '';
+      this.syncError = '';
       this.syncState = 'pending';
+      this.availableTeams = [];
+      this.currentEmployeeId = '';
+      this.teamSelectionRequired = false;
     },
-    async ensureAutomaticSync() {
-      this.syncState = 'connecting';
+    selectedTeamId(employeeId: string, teams: DesktopTeam[]): string {
       try {
-        const configured = await getDesktopSyncStatus();
-        if (configured === null) {
+        const selected = localStorage.getItem(`seeseeyou-desktop-team:${employeeId}`) || '';
+        return teams.some(team => team.team_id === selected) ? selected : '';
+      } catch (_error) {
+        return '';
+      }
+    },
+    rememberTeam(employeeId: string, teamId: string) {
+      try {
+        localStorage.setItem(`seeseeyou-desktop-team:${employeeId}`, teamId);
+      } catch (_error) {
+        // Sync remains usable when storage is restricted; the user may need to
+        // choose the team again on the next launch.
+      }
+    },
+    syncErrorMessage(error: unknown): string {
+      if (!(error instanceof SeeSeeYouApiError)) return this.copy.autoSyncFailed;
+      if (error.code === 'no_active_team') return this.copy.noActiveTeam;
+      if (error.code === 'device_team_change_forbidden') return this.copy.syncTeamConflict;
+      if (error.code === 'team_forbidden' || error.code === 'team_selection_required') {
+        return this.copy.chooseTeamBody;
+      }
+      return this.friendlyError(error, this.copy.autoSyncFailed);
+    },
+    async selectSyncTeam(team: DesktopTeam) {
+      await this.ensureAutomaticSync(team.team_id);
+    },
+    async ensureAutomaticSync(requestedTeamId = '') {
+      this.syncState = 'connecting';
+      this.syncError = '';
+      try {
+        const syncStatus = await getDesktopSyncStatus();
+        if (syncStatus === null) {
           this.syncState = 'pending';
           return;
         }
-        if (!configured) {
-          const enrollment = await autoEnrollDesktop();
-          await configureDesktopSync({
-            server_url: apiBaseToServerUrl(getSeeSeeYouApiBase()),
-            local_api_url: `${window.location.origin.replace(/\/+$/, '')}/api/0`,
-            device_id: enrollment.device.device_id,
-            employee_id: enrollment.device.employee_id,
-            device_key: enrollment.credentials.device_token,
-            hmac_secret: enrollment.credentials.hmac_secret,
-          });
+        const teamData = await getMyDesktopTeams();
+        this.currentEmployeeId = teamData.employee_id;
+        this.availableTeams = teamData.items || [];
+
+        if (syncStatus.configured) {
+          if (syncStatus.employee_id && syncStatus.employee_id !== teamData.employee_id) {
+            this.syncState = 'error';
+            this.syncError = this.copy.syncAccountMismatch;
+            return;
+          }
+          if (
+            syncStatus.team_id &&
+            !this.availableTeams.some(team => team.team_id === syncStatus.team_id)
+          ) {
+            this.syncState = 'error';
+            this.syncError = this.copy.syncTeamUnavailable;
+            return;
+          }
+          this.syncState = 'active';
+          return;
         }
+
+        if (!this.availableTeams.length) {
+          this.syncState = 'error';
+          this.syncError = this.copy.noActiveTeam;
+          return;
+        }
+        const cachedTeamId = this.selectedTeamId(teamData.employee_id, this.availableTeams);
+        const teamId =
+          requestedTeamId ||
+          (this.availableTeams.length === 1 ? this.availableTeams[0].team_id : cachedTeamId);
+        if (!teamId || !this.availableTeams.some(team => team.team_id === teamId)) {
+          this.teamSelectionRequired = true;
+          this.syncState = 'pending';
+          return;
+        }
+
+        this.teamSelectionRequired = false;
+        const enrollment = await autoEnrollDesktop(teamId);
+        const enrolledTeamId = enrollment.device.team_id;
+        this.rememberTeam(teamData.employee_id, enrolledTeamId);
+        await configureDesktopSync({
+          server_url: apiBaseToServerUrl(getSeeSeeYouApiBase()),
+          local_api_url: `${window.location.origin.replace(/\/+$/, '')}/api/0`,
+          device_id: enrollment.device.device_id,
+          employee_id: enrollment.device.employee_id,
+          team_id: enrolledTeamId,
+          device_key: enrollment.credentials.device_token,
+          hmac_secret: enrollment.credentials.hmac_secret,
+        });
         this.syncState = 'active';
       } catch (error) {
         this.syncState = 'error';
+        this.syncError = this.syncErrorMessage(error);
         console.warn('Unable to configure automatic SeeSeeYou sync:', error);
       }
     },
@@ -672,6 +857,60 @@ button {
   font-size: 12px;
   font-weight: 700;
 }
+.google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 1px solid #cbd8d6;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+.google-button:hover:not(:disabled) {
+  border-color: #99b5b1;
+  box-shadow: 0 5px 14px rgba(32, 67, 63, 0.08);
+  transform: translateY(-1px);
+}
+.google-button:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+.google-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #d9e0e7;
+  border-radius: 50%;
+  color: #4285f4;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #879492;
+  font-size: 11px;
+  text-align: center;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e1e8e6;
+}
+.auth-divider span {
+  white-space: nowrap;
+}
 .login-card .remember-row {
   display: flex;
   align-items: center;
@@ -723,6 +962,52 @@ button {
 }
 .error-banner {
   margin: 0 0 14px;
+}
+.team-picker {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 28px;
+  margin-bottom: 14px;
+  padding: 24px;
+  border: 1px solid #cfe0dd;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f2fbf8, #fff);
+  box-shadow: 0 10px 30px rgba(31, 67, 63, 0.06);
+}
+.team-picker h3 {
+  margin: 7px 0 8px;
+  font-size: 21px;
+}
+.team-picker p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.team-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.team-options button {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid #cbdad7;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.team-options button:hover:not(:disabled) {
+  border-color: var(--mint);
+  box-shadow: 0 5px 16px rgba(13, 143, 131, 0.1);
+}
+.team-options button span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
 }
 .summary-grid {
   display: grid;
@@ -941,6 +1226,9 @@ button {
   .login-card {
     margin: 20px 34px 40px;
   }
+  .team-picker {
+    grid-template-columns: 1fr;
+  }
   .task-board {
     grid-template-columns: repeat(4, 250px);
   }
@@ -961,6 +1249,9 @@ button {
   .login-card {
     margin: 18px 22px 30px;
     padding: 20px;
+  }
+  .team-options {
+    grid-template-columns: 1fr;
   }
 }
 </style>
