@@ -99,6 +99,8 @@ jobs:
         run: |
           npm ci
           npm run test:unit -- --runInBand test/unit/seeseeyou.test.js
+          npm run build
+          cp -R dist ../activitywatch/aw-tauri/aw-webui/dist
 
       - name: Generate SeeSeeYou desktop icons
         working-directory: activitywatch/aw-tauri
