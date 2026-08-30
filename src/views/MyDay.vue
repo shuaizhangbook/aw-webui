@@ -485,7 +485,8 @@ export default {
   },
   async mounted() {
     if (this.authenticated) {
-      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+      await this.loadWork();
+      if (this.authenticated) await this.ensureAutomaticSync();
     }
   },
   beforeDestroy() {
@@ -556,7 +557,8 @@ export default {
     async finishLogin() {
       this.authenticated = true;
       this.syncError = '';
-      await Promise.all([this.loadWork(), this.ensureAutomaticSync()]);
+      await this.loadWork();
+      if (this.authenticated) await this.ensureAutomaticSync();
     },
     async loadWork() {
       this.loading = true;
@@ -683,6 +685,7 @@ export default {
     },
     async refresh() {
       await this.loadWork();
+      if (this.authenticated) await this.ensureAutomaticSync();
     },
     async performAction(task: WorkTask, action: 'start' | 'complete' | 'focus') {
       this.busyTaskId = task.id;

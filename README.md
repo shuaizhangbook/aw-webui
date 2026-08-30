@@ -2,6 +2,23 @@
 
 A web-based UI for ActivityWatch, built with Vue.js
 
+## SeeSeeYou desktop distribution
+
+This fork also builds the branded SeeSeeYou Windows desktop client. The native
+process keeps ActivityWatch collection on `localhost:5600`, while the main
+window loads the complete SeeSeeYou employee workspace from
+`https://watch.sding.me/admin/my-day/`. A minimal, origin-restricted Tauri
+bridge handles system-browser Google sign-in and automatic device enrollment;
+the remote workspace cannot choose another sync server or local activity API.
+
+The release workflow is `.github/workflows/build-myday-windows.yml`, and the
+native changes applied to the pinned `aw-tauri` source live in
+`desktop/patches/aw-tauri-seeseeyou.patch`. Because the sync agent repository
+is private, manual public-repository builds require a
+`SEESEEYOU_REPO_TOKEN` secret with read-only access to that repository. Official
+packages are built from the private product repository so its source is never
+copied into this public fork.
+
 [![Build Status](https://github.com/ActivityWatch/aw-webui/workflows/Build/badge.svg)](https://github.com/ActivityWatch/aw-webui/actions)
 [![Coverage Status](https://codecov.io/gh/ActivityWatch/aw-webui/branch/master/graph/badge.svg)](https://codecov.io/gh/ActivityWatch/aw-webui)
 [![Known Vulnerabilities](https://snyk.io/test/github/ActivityWatch/aw-webui/badge.svg)](https://snyk.io/test/github/ActivityWatch/aw-webui)
