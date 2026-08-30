@@ -2,22 +2,9 @@ name: Build SeeSeeYou Windows desktop
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - .github/workflows/build-myday-windows.yml
-      - desktop/**
-      - desktop/assets/seeseeyou-icon.*
-      - src/App.vue
-      - src/components/Header.vue
-      - src/i18n/**
-      - src/route.js
-      - src/util/seeseeyou.ts
-      - src/views/MyDay.vue
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   TAURI_BUILD: 'true'
@@ -46,9 +33,12 @@ jobs:
           git -C activitywatch submodule update --init --recursive --depth 1
 
       - name: Check out the SeeSeeYou sync agent
-        run: |
-          git clone https://github.com/shuaizhangbook/seeseeyou.git seeseeyou
-          git -C seeseeyou checkout 36533603fa8de87efe8ed4f61976a81af4d4e772
+        uses: actions/checkout@v7
+        with:
+          repository: shuaizhangbook/seeseeyou
+          ref: 03e31f5458f4c3d3e0ba5545e5baef718f2b58f4
+          path: seeseeyou
+          token: ${{ secrets.SEESEEYOU_REPO_TOKEN }}
 
       - name: Apply SeeSeeYou desktop customizations
         run: |
@@ -60,7 +50,7 @@ jobs:
             -C custom-webui \
             -cf - . \
             | tar -C activitywatch/aw-tauri/aw-webui -xf -
-          git -C activitywatch/aw-tauri apply \
+          git -C activitywatch/aw-tauri apply --unidiff-zero \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
           cp custom-webui/desktop/aw-tauri.iss activitywatch/scripts/package/aw-tauri.iss
 
@@ -69,15 +59,29 @@ jobs:
           grep -F 'port: 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'Migrated SeeSeeYou local port from 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'Migrated SeeSeeYou sync API from port 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'sync-rebind-pending' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'fresh_sync_cursor_timestamp' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'commands.allow = ["get_sync_status"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
           grep -F 'commands.allow = ["configure_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F 'commands.allow = ["get_or_create_installation_id"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F 'commands.allow = ["rotate_installation_id"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F 'commands.allow = ["pause_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F 'commands.allow = ["resume_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
           grep -F 'commands.allow = ["clear_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
-          grep -F '"http://localhost:5600/*"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
-          grep -F '"allow-get-sync-status"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
-          grep -F '"allow-configure-sync"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
-          grep -F '"allow-clear-sync"' activitywatch/aw-tauri/src-tauri/capabilities/default.json
-          grep -F 'target.origin === window.location.origin' activitywatch/aw-tauri/src-tauri/src/lib.rs
-          grep -F '"version": "0.1.2"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
+          grep -F 'commands.allow = ["trigger_sync_now"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
+          grep -F '"https://watch.sding.me/admin/my-day/*"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"local": false' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"allow-get-sync-status"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"allow-configure-sync"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"allow-pause-sync"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"allow-resume-sync"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"allow-clear-sync"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"allow-trigger-sync"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"https://watch.sding.me/admin/join/*"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-join.json
+          grep -F '"allow-open-external"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-join.json
+          grep -F 'SEESEEYOU_WORKSPACE_URL' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'include_str!("seeseeyou_bridge.js")' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F '"version": "0.1.3"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -91,8 +95,46 @@ jobs:
           cache: npm
           cache-dependency-path: custom-webui/package-lock.json
 
+      - name: Test the injected desktop bridge
+        run: |
+          node --check activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js
+          SEESEEYOU_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js" \
+            node --test custom-webui/desktop/tests/seeseeyou_bridge.test.cjs
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify the deployed SeeSeeYou desktop APIs
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          def request_json(url, expected_status=200):
+              last_error = None
+              for _ in range(6):
+                  try:
+                      with urllib.request.urlopen(url, timeout=20) as response:
+                          if response.status != expected_status:
+                              raise RuntimeError(f"unexpected HTTP {response.status} for {url}")
+                          return json.load(response)
+                  except Exception as error:
+                      last_error = error
+                      time.sleep(5)
+              raise last_error
+
+          google = request_json('https://watch.sding.me/api/v1/auth/google/start?client=desktop')
+          assert google.get('authorization_url', '').startswith('https://accounts.google.com/')
+          assert google.get('poll_token')
+          try:
+              urllib.request.urlopen('https://watch.sding.me/api/v1/me/teams', timeout=20)
+          except urllib.error.HTTPError as error:
+              assert error.code == 401, error.code
+          else:
+              raise AssertionError('unauthenticated /me/teams must return 401')
+          PY
 
       - name: Test SeeSeeYou Google sign-in helpers
         working-directory: custom-webui
@@ -108,14 +150,22 @@ jobs:
           npm ci
           npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
 
-      - name: Test desktop sync configuration compatibility
+      - name: Test desktop engine
         working-directory: activitywatch/aw-tauri/src-tauri
-        run: cargo test sync_config_ --lib
+        run: cargo test --lib
 
       - name: Install packaging dependencies
         run: |
           choco install innosetup -y --no-progress
-          python -m pip install poetry==2.2.1 pyinstaller==6.15.0
+          python -m pip install poetry==2.2.1 pyinstaller==6.15.0 -r seeseeyou/backend/requirements.txt
+
+      - name: Test SeeSeeYou enrollment and sync agent
+        working-directory: seeseeyou
+        run: |
+          python -m unittest \
+            tests.test_usage_sync_state \
+            tests.test_desktop_auto_enrollment \
+            tests.test_google_desktop_auth
 
       - name: Build the background sync program
         working-directory: seeseeyou/admin/client
@@ -127,6 +177,7 @@ jobs:
             --name seeseeyou-sync \
             --paths . \
             usage-sync.py
+          ./dist/seeseeyou-sync.exe --help
 
       - name: Build SeeSeeYou desktop
         working-directory: activitywatch
@@ -146,8 +197,14 @@ jobs:
           bash scripts/package/package-all.sh
           setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
           zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
-          mv "$setup_file" dist/SeeSeeYou-0.1.2-windows-x86_64-setup.exe
-          mv "$zip_file" dist/SeeSeeYou-0.1.2-windows-x86_64-portable.zip
+          mv "$setup_file" dist/SeeSeeYou-0.1.3-windows-x86_64-setup.exe
+          rm -f "$zip_file"
+          portable_stage=$(mktemp -d)
+          mkdir -p "$portable_stage/SeeSeeYou"
+          cp -R dist/activitywatch/. "$portable_stage/SeeSeeYou/"
+          (cd "$portable_stage" && 7z a -tzip -mx=9 \
+            "$GITHUB_WORKSPACE/activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-portable.zip" \
+            SeeSeeYou)
 
       - name: Show generated packages
         working-directory: activitywatch
@@ -156,9 +213,26 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: SeeSeeYou-0.1.2-Windows
+          name: SeeSeeYou-0.1.3-Windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/SeeSeeYou-0.1.2-windows-x86_64-setup.exe
-            activitywatch/dist/SeeSeeYou-0.1.2-windows-x86_64-portable.zip
+            activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-setup.exe
+            activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-portable.zip
+
+      - name: Publish the SeeSeeYou v0.1.3 release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          setup_file=activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-setup.exe
+          portable_file=activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-portable.zip
+          if gh release view v0.1.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v0.1.3 "$setup_file" "$portable_file" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create v0.1.3 "$setup_file" "$portable_file" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "SeeSeeYou 0.1.3" \
+              --notes "完整 My Day 工作台、Google 登录、5600 本机采集、真实同步状态与安全账号/团队重新绑定。 Full My Day workspace, Google sign-in, local collection on port 5600, real sync health, and safe account/team rebinding."
+          fi

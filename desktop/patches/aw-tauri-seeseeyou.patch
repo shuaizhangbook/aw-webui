@@ -1,36 +1,84 @@
 diff --git a/src-tauri/capabilities/default.json b/src-tauri/capabilities/default.json
-index aa43578..173eca8 100644
+index aa43578..d4c34f1 100644
 --- a/src-tauri/capabilities/default.json
 +++ b/src-tauri/capabilities/default.json
-@@ -6,6 +6,11 @@
-     "main",
-     "module-alert"
-   ],
+@@ -4 +4 @@
+-  "description": "Capability for the main and module alert windows",
++  "description": "Local capability for the collector alert window",
+@@ -6 +5,0 @@
+-    "main",
+@@ -10,8 +9 @@
+-    "core:default",
+-    "shell:allow-open",
+-    "dialog:default",
+-    "opener:default",
+-    "allow-open-external",
+-    "allow-greet",
+-    "allow-get-autostart-enabled",
+-    "allow-set-autostart-enabled"
++    "core:default"
+diff --git a/src-tauri/capabilities/seeseeyou-join.json b/src-tauri/capabilities/seeseeyou-join.json
+new file mode 100644
+index 0000000..43fe2ca
+--- /dev/null
++++ b/src-tauri/capabilities/seeseeyou-join.json
+@@ -0,0 +1,17 @@
++{
++  "$schema": "../gen/schemas/desktop-schema.json",
++  "identifier": "seeseeyou-join",
++  "description": "System-browser OAuth bridge for the SeeSeeYou invitation page",
++  "windows": [
++    "main"
++  ],
++  "local": false,
 +  "remote": {
 +    "urls": [
-+      "http://localhost:5600/*"
++      "https://watch.sding.me/admin/join/*"
 +    ]
 +  },
-   "permissions": [
-     "core:default",
-     "shell:allow-open",
-@@ -14,6 +19,9 @@
-     "allow-open-external",
-     "allow-greet",
-     "allow-get-autostart-enabled",
--    "allow-set-autostart-enabled"
++  "permissions": [
++    "allow-open-external"
++  ]
++}
+diff --git a/src-tauri/capabilities/seeseeyou-remote.json b/src-tauri/capabilities/seeseeyou-remote.json
+new file mode 100644
+index 0000000..70d1ab1
+--- /dev/null
++++ b/src-tauri/capabilities/seeseeyou-remote.json
+@@ -0,0 +1,27 @@
++{
++  "$schema": "../gen/schemas/desktop-schema.json",
++  "identifier": "seeseeyou-remote",
++  "description": "Minimal native bridge for the trusted SeeSeeYou workspace",
++  "windows": [
++    "main"
++  ],
++  "local": false,
++  "remote": {
++    "urls": [
++      "https://watch.sding.me/admin/my-day/*"
++    ]
++  },
++  "permissions": [
++    "allow-open-external",
++    "allow-get-autostart-enabled",
 +    "allow-set-autostart-enabled",
 +    "allow-get-sync-status",
++    "allow-get-installation-id",
++    "allow-rotate-installation-id",
 +    "allow-configure-sync",
-+    "allow-clear-sync"
-   ]
- }
++    "allow-pause-sync",
++    "allow-resume-sync",
++    "allow-clear-sync",
++    "allow-trigger-sync"
++  ]
++}
 diff --git a/src-tauri/permissions/sync-control.toml b/src-tauri/permissions/sync-control.toml
 new file mode 100644
-index 0000000..420d56e
+index 0000000..4a39cd1
 --- /dev/null
 +++ b/src-tauri/permissions/sync-control.toml
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,39 @@
 +[[permission]]
 +identifier = "allow-get-sync-status"
 +description = "Allows the SeeSeeYou dashboard to read local sync configuration status."
@@ -42,78 +90,83 @@ index 0000000..420d56e
 +commands.allow = ["configure_sync"]
 +
 +[[permission]]
++identifier = "allow-get-installation-id"
++description = "Allows the SeeSeeYou dashboard to obtain this installation's stable native identifier."
++commands.allow = ["get_or_create_installation_id"]
++
++[[permission]]
++identifier = "allow-rotate-installation-id"
++description = "Allows an explicit user-approved rebind to create a new native installation identity."
++commands.allow = ["rotate_installation_id"]
++
++[[permission]]
++identifier = "allow-pause-sync"
++description = "Allows the SeeSeeYou dashboard to pause local activity synchronization on logout."
++commands.allow = ["pause_sync"]
++
++[[permission]]
++identifier = "allow-resume-sync"
++description = "Allows the SeeSeeYou dashboard to resume the saved identity after authentication."
++commands.allow = ["resume_sync"]
++
++[[permission]]
 +identifier = "allow-clear-sync"
 +description = "Allows the SeeSeeYou dashboard to disconnect local activity synchronization."
 +commands.allow = ["clear_sync"]
++
++[[permission]]
++identifier = "allow-trigger-sync"
++description = "Allows an authenticated SeeSeeYou workspace to trigger background synchronization."
++commands.allow = ["trigger_sync_now"]
 diff --git a/src-tauri/src/dirs.rs b/src-tauri/src/dirs.rs
 index 1f17798..f610b97 100644
 --- a/src-tauri/src/dirs.rs
 +++ b/src-tauri/src/dirs.rs
-@@ -21,8 +21,8 @@ lazy_static! {
- pub fn get_config_dir() -> Result<PathBuf, ()> {
-     let dir = dirs::config_dir()
-         .ok_or(())?
+@@ -24,2 +24,2 @@ pub fn get_config_dir() -> Result<PathBuf, ()> {
 -        .join("activitywatch")
 -        .join("aw-tauri");
 +        .join("seeseeyou")
 +        .join("desktop");
-     fs::create_dir_all(&dir).expect("Unable to create config dir");
-     Ok(dir)
- }
-@@ -37,8 +37,8 @@ pub fn get_config_dir() -> Result<PathBuf, ()> {
- pub fn get_data_dir() -> Result<PathBuf, ()> {
-     let dir = dirs::data_dir()
-         .ok_or(())?
+@@ -40,2 +40,2 @@ pub fn get_data_dir() -> Result<PathBuf, ()> {
 -        .join("activitywatch")
 -        .join("aw-tauri");
 +        .join("seeseeyou")
 +        .join("desktop");
-     fs::create_dir_all(&dir).expect("Unable to create data dir");
-     Ok(dir)
- }
-@@ -68,9 +68,9 @@ pub fn get_log_dir() -> Result<PathBuf, ()> {
-     // Windows: %LOCALAPPDATA%\activitywatch\Logs\aw-tauri
-     let dir = dirs::data_local_dir()
-         .ok_or(())?
+@@ -71 +71 @@ pub fn get_log_dir() -> Result<PathBuf, ()> {
 -        .join("activitywatch")
 +        .join("seeseeyou")
-         .join("Logs")
+@@ -73 +73 @@ pub fn get_log_dir() -> Result<PathBuf, ()> {
 -        .join("aw-tauri");
 +        .join("desktop");
-     fs::create_dir_all(&dir).expect("Unable to create log dir");
-     Ok(dir)
- }
 diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
-index a51b1f0..e47a393 100644
+index a51b1f0..d394dfa 100644
 --- a/src-tauri/src/lib.rs
 +++ b/src-tauri/src/lib.rs
-@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
- use std::collections::BTreeMap;
- use std::env;
- use std::fs::{create_dir_all, read_to_string, remove_file, write, OpenOptions};
+@@ -5,0 +6 @@ use lazy_static::lazy_static;
++use chrono::{DateTime, SecondsFormat, Utc};
+@@ -10,2 +11,3 @@ use std::env;
+-use std::fs::{create_dir_all, read_to_string, remove_file, write, OpenOptions};
 -use std::net::{SocketAddr, TcpListener};
++use std::fs::{create_dir_all, read_to_string, remove_file, rename, write, OpenOptions};
++use std::io::{Read, Write as IoWrite};
 +use std::net::{SocketAddr, TcpListener, TcpStream};
- use std::path::{Path, PathBuf};
+@@ -12,0 +15,2 @@ use std::path::{Path, PathBuf};
 +use std::process::Command;
- use std::sync::{mpsc, Condvar, Mutex, OnceLock};
- use std::thread;
- use std::time::Duration;
-@@ -19,6 +20,9 @@ use tauri_plugin_notification::NotificationExt;
- use tauri_plugin_opener::OpenerExt;
- use tauri_plugin_updater::UpdaterExt;
- 
++use std::sync::atomic::{AtomicU64, Ordering};
+@@ -15 +19 @@ use std::thread;
+-use std::time::Duration;
++use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+@@ -21,0 +26,3 @@ use tauri_plugin_updater::UpdaterExt;
 +#[cfg(target_os = "windows")]
 +use std::os::windows::process::CommandExt;
 +
- mod autostart;
- mod dirs;
- mod logging;
-@@ -97,6 +101,27 @@ lazy_static! {
- }
- static CONFIG: OnceLock<UserConfig> = OnceLock::new();
- static FIRST_RUN: OnceLock<bool> = OnceLock::new();
+@@ -99,0 +107,42 @@ static FIRST_RUN: OnceLock<bool> = OnceLock::new();
 +static SYNC_TRIGGER: OnceLock<mpsc::SyncSender<()>> = OnceLock::new();
++static SYNC_RUNTIME: OnceLock<Mutex<SyncRuntimeState>> = OnceLock::new();
++static SYNC_CONTROL: OnceLock<Mutex<()>> = OnceLock::new();
++static SYNC_GENERATION: AtomicU64 = AtomicU64::new(0);
 +const DEFAULT_LOCAL_API_URL: &str = "http://localhost:5600/api/0";
++const SEESEEYOU_WORKSPACE_URL: &str = "https://watch.sding.me/admin/my-day/?desktop=1";
 +
 +#[derive(Debug, Deserialize, Serialize)]
 +pub struct DesktopSyncConfig {
@@ -130,20 +183,62 @@ index a51b1f0..e47a393 100644
 +#[derive(Debug, Serialize)]
 +pub struct DesktopSyncStatus {
 +    configured: bool,
++    paused: bool,
++    binary_ready: bool,
++    device_id: Option<String>,
 +    employee_id: Option<String>,
 +    team_id: Option<String>,
++    running: bool,
++    bucket_ready: bool,
++    last_attempt_at_ms: Option<u64>,
++    last_success_at_ms: Option<u64>,
++    last_error: Option<String>,
 +}
- 
- fn init_app_handle(handle: AppHandle) {
-     HANDLE.get_or_init(|| AppHandleWrapper(Mutex::new(handle)));
-@@ -109,6 +134,170 @@ pub(crate) fn get_app_handle() -> &'static Mutex<AppHandle> {
-     &HANDLE.get().expect("HANDLE not initialized").0
- }
- 
++
++#[derive(Debug, Default)]
++struct SyncRuntimeState {
++    running: bool,
++    bucket_ready: bool,
++    last_attempt_at_ms: Option<u64>,
++    last_success_at_ms: Option<u64>,
++    last_error: Option<String>,
++}
+@@ -111,0 +161,665 @@ pub(crate) fn get_app_handle() -> &'static Mutex<AppHandle> {
 +fn sync_config_path() -> PathBuf {
 +    dirs::get_config_dir()
 +        .expect("Failed to get SeeSeeYou config dir")
 +        .join("sync-config.json")
++}
++
++fn sync_paused_path() -> PathBuf {
++    dirs::get_config_dir()
++        .expect("Failed to get SeeSeeYou config dir")
++        .join("sync-paused")
++}
++
++fn sync_rebind_pending_path() -> PathBuf {
++    dirs::get_config_dir()
++        .expect("Failed to get SeeSeeYou config dir")
++        .join("sync-rebind-pending")
++}
++
++fn desktop_identity_path() -> PathBuf {
++    dirs::get_config_dir()
++        .expect("Failed to get SeeSeeYou config dir")
++        .join("desktop-identity.json")
++}
++
++fn sync_state_paths() -> Vec<PathBuf> {
++    let dir = dirs::get_config_dir().expect("Failed to get SeeSeeYou config dir");
++    [
++        "state.json",
++        "canonical-snapshots.sqlite3",
++        "canonical-snapshots.sqlite3-shm",
++        "canonical-snapshots.sqlite3-wal",
++    ]
++    .into_iter()
++    .map(|name| dir.join(name))
++    .collect()
 +}
 +
 +fn sync_binary_path() -> Option<PathBuf> {
@@ -153,6 +248,72 @@ index a51b1f0..e47a393 100644
 +    #[cfg(not(target_os = "windows"))]
 +    let filename = "seeseeyou-sync";
 +    Some(parent.join(filename))
++}
++
++fn now_unix_ms() -> u64 {
++    SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .unwrap_or_default()
++        .as_millis() as u64
++}
++
++fn fresh_sync_cursor_timestamp(now_ms: u64) -> String {
++    // Skip the complete five-minute window containing the identity switch.
++    // The sync agent preserves this future cursor until the boundary is sealed,
++    // so no activity from the previous account or team can be replayed.
++    let remainder = now_ms % 300_000;
++    let next_boundary_ms = if remainder == 0 {
++        now_ms
++    } else {
++        now_ms.saturating_add(300_000 - remainder)
++    };
++    DateTime::<Utc>::from_timestamp_millis(next_boundary_ms as i64)
++        .expect("current SeeSeeYou timestamp must be representable")
++        .to_rfc3339_opts(SecondsFormat::Millis, true)
++}
++
++fn seed_fresh_sync_cursor() -> Result<(), String> {
++    let state_path = dirs::get_config_dir()
++        .expect("Failed to get SeeSeeYou config dir")
++        .join("state.json");
++    let identity_not_before_utc = fresh_sync_cursor_timestamp(now_unix_ms());
++    let serialized = serde_json::to_vec_pretty(&serde_json::json!({
++        "last_window_end_utc": identity_not_before_utc.clone(),
++        "identity_not_before_utc": identity_not_before_utc,
++        "pending_records": [],
++    }))
++    .map_err(|error| format!("Unable to encode fresh sync cursor: {error}"))?;
++    write(state_path, serialized)
++        .map_err(|error| format!("Unable to initialize fresh sync cursor: {error}"))
++}
++
++fn update_sync_runtime(update: impl FnOnce(&mut SyncRuntimeState)) {
++    let state = SYNC_RUNTIME.get_or_init(|| Mutex::new(SyncRuntimeState::default()));
++    if let Ok(mut state) = state.lock() {
++        update(&mut state);
++    }
++}
++
++fn validate_sync_config(config: &DesktopSyncConfig) -> Result<(), String> {
++    if config.server_url.trim().is_empty()
++        || config.local_api_url.trim().is_empty()
++        || config.device_id.trim().is_empty()
++        || config.employee_id.trim().is_empty()
++        || config.device_key.trim().is_empty()
++        || config.hmac_secret.trim().is_empty()
++    {
++        return Err("Incomplete sync configuration".to_string());
++    }
++    if config.server_url.trim().trim_end_matches('/') != "https://watch.sding.me" {
++        return Err("Untrusted SeeSeeYou sync server".to_string());
++    }
++    if !matches!(
++        config.local_api_url.trim().trim_end_matches('/'),
++        "http://localhost:5600/api/0" | "http://127.0.0.1:5600/api/0"
++    ) {
++        return Err("Unsupported local activity API".to_string());
++    }
++    Ok(())
 +}
 +
 +fn migrate_sync_config_local_api_url(config: &mut DesktopSyncConfig) -> bool {
@@ -182,41 +343,216 @@ index a51b1f0..e47a393 100644
 +        return Ok(());
 +    }
 +
-+    let serialized = serde_json::to_vec_pretty(&config)
-+        .map_err(|error| format!("Unable to encode migrated sync configuration: {error}"))?;
-+    write(&path, serialized)
++    validate_sync_config(&config)?;
++    write_sync_config_atomically(&config)
 +        .map_err(|error| format!("Unable to migrate sync configuration to port 5600: {error}"))?;
 +    info!("Migrated SeeSeeYou sync API from port 5601 to 5600");
 +    Ok(())
 +}
 +
-+fn run_sync_once() -> Result<(), String> {
++fn write_sync_config_atomically(config: &DesktopSyncConfig) -> Result<(), String> {
++    validate_sync_config(config)?;
++    let path = sync_config_path();
++    let temporary = path.with_extension("json.tmp");
++    let backup = path.with_extension("json.bak");
++    let serialized = serde_json::to_vec_pretty(config)
++        .map_err(|error| format!("Unable to encode sync configuration: {error}"))?;
++    let mut temporary_file = OpenOptions::new()
++        .create(true)
++        .truncate(true)
++        .write(true)
++        .open(&temporary)
++        .map_err(|error| format!("Unable to open temporary sync configuration: {error}"))?;
++    temporary_file
++        .write_all(&serialized)
++        .and_then(|_| temporary_file.sync_all())
++        .map_err(|error| format!("Unable to save temporary sync configuration: {error}"))?;
++    drop(temporary_file);
++    if backup.exists() {
++        remove_file(&backup)
++            .map_err(|error| format!("Unable to remove an old sync backup: {error}"))?;
++    }
++    if path.exists() {
++        rename(&path, &backup)
++            .map_err(|error| format!("Unable to back up sync configuration: {error}"))?;
++    }
++    if let Err(error) = rename(&temporary, &path) {
++        if backup.exists() {
++            let _ = rename(&backup, &path);
++        }
++        return Err(format!("Unable to activate sync configuration: {error}"));
++    }
++    if backup.exists() {
++        remove_file(backup)
++            .map_err(|error| format!("Unable to remove sync configuration backup: {error}"))?;
++    }
++    Ok(())
++}
++
++fn load_validated_sync_config() -> Result<Option<DesktopSyncConfig>, String> {
 +    migrate_sync_config_to_port_5600()?;
++    let path = sync_config_path();
++    if !path.exists() {
++        return Ok(None);
++    }
++    let contents = read_to_string(&path)
++        .map_err(|error| format!("Unable to read sync configuration: {error}"))?;
++    let config = serde_json::from_str::<DesktopSyncConfig>(&contents)
++        .map_err(|error| format!("Unable to decode sync configuration: {error}"))?;
++    validate_sync_config(&config)?;
++    Ok(Some(config))
++}
++
++fn remove_sync_state() -> Result<(), String> {
++    for path in sync_state_paths() {
++        if path.exists() {
++            remove_file(&path)
++                .map_err(|error| format!("Unable to clear {}: {error}", path.display()))?;
++        }
++    }
++    Ok(())
++}
++
++fn cancel_active_sync() -> Result<(), String> {
++    SYNC_GENERATION.fetch_add(1, Ordering::SeqCst);
++    let deadline = Instant::now() + Duration::from_secs(5);
++    loop {
++        let running = SYNC_RUNTIME
++            .get_or_init(|| Mutex::new(SyncRuntimeState::default()))
++            .lock()
++            .map(|state| state.running)
++            .unwrap_or(false);
++        if !running {
++            return Ok(());
++        }
++        if Instant::now() >= deadline {
++            return Err("Timed out while stopping the previous sync".to_string());
++        }
++        thread::sleep(Duration::from_millis(50));
++    }
++}
++
++/// Returns true only when the child completed a real successful upload pass.
++/// A false result means the pass was cancelled because the account was paused
++/// or changed while the child was running.
++fn run_sync_once(port: u16) -> Result<bool, String> {
++    if sync_paused_path().exists()
++        || sync_rebind_pending_path().exists()
++        || load_validated_sync_config()?.is_none()
++    {
++        return Ok(false);
++    }
++    let generation = SYNC_GENERATION.load(Ordering::SeqCst);
++    if !wait_for_required_buckets(port, generation)? {
++        return Ok(false);
++    }
++    update_sync_runtime(|state| state.bucket_ready = true);
 +    let config_path = sync_config_path();
 +    let binary_path = sync_binary_path().ok_or_else(|| "Unable to locate sync program".to_string())?;
-+    if !config_path.exists() || !binary_path.exists() {
-+        return Ok(());
++    if !binary_path.exists() {
++        return Err("SeeSeeYou sync program is missing".to_string());
 +    }
 +    let mut command = Command::new(binary_path);
 +    command.arg("--config").arg(config_path);
 +    #[cfg(target_os = "windows")]
 +    command.creation_flags(0x08000000);
-+    let status = command
-+        .status()
++    let mut child = command
++        .spawn()
 +        .map_err(|error| format!("Unable to start SeeSeeYou sync: {error}"))?;
-+    if status.success() {
-+        Ok(())
-+    } else {
-+        Err(format!("SeeSeeYou sync exited with status {status}"))
++    loop {
++        if generation != SYNC_GENERATION.load(Ordering::SeqCst) || sync_paused_path().exists() {
++            let _ = child.kill();
++            let _ = child.wait();
++            return Ok(false);
++        }
++        let status = match child.try_wait() {
++            Ok(status) => status,
++            Err(error) => {
++                let _ = child.kill();
++                let _ = child.wait();
++                return Err(format!("Unable to read SeeSeeYou sync status: {error}"));
++            }
++        };
++        match status {
++            Some(status) if status.success() => return Ok(true),
++            Some(status) => return Err(format!("SeeSeeYou sync exited with status {status}")),
++            None => thread::sleep(Duration::from_millis(100)),
++        }
 +    }
 +}
 +
-+fn wait_for_local_server(port: u16) {
++fn wait_for_local_server(port: u16) -> Result<(), String> {
 +    let address = SocketAddr::from(([127, 0, 0, 1], port));
++    let deadline = Instant::now() + Duration::from_secs(60);
 +    while TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_err() {
++        if Instant::now() >= deadline {
++            return Err(format!("Local SeeSeeYou server did not start on port {port}"));
++        }
 +        thread::sleep(Duration::from_millis(250));
 +    }
 +    info!("Local SeeSeeYou server is ready on port {port}");
++    Ok(())
++}
++
++fn bucket_metadata_ready(value: &serde_json::Value) -> bool {
++    let Some(buckets) = value.as_object() else {
++        return false;
++    };
++    let mut window_ready = false;
++    let mut afk_ready = false;
++    for (bucket_id, metadata) in buckets {
++        let bucket_type = metadata
++            .get("type")
++            .and_then(serde_json::Value::as_str)
++            .unwrap_or_default()
++            .to_ascii_lowercase();
++        let lowered_id = bucket_id.to_ascii_lowercase();
++        window_ready |= bucket_type == "currentwindow" || lowered_id.contains("watcher-window");
++        afk_ready |= bucket_type == "afkstatus" || lowered_id.contains("watcher-afk");
++    }
++    window_ready && afk_ready
++}
++
++fn local_buckets_ready(port: u16) -> bool {
++    let address = SocketAddr::from(([127, 0, 0, 1], port));
++    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(500)) else {
++        return false;
++    };
++    let request = b"GET /api/0/buckets HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
++    if stream.write_all(request).is_err() {
++        return false;
++    }
++    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
++    let mut response = String::new();
++    if stream.read_to_string(&mut response).is_err() {
++        return false;
++    }
++    let Some((headers, body)) = response.split_once("\r\n\r\n") else {
++        return false;
++    };
++    if !headers.starts_with("HTTP/1.1 200") && !headers.starts_with("HTTP/1.0 200") {
++        return false;
++    }
++    serde_json::from_str(body)
++        .ok()
++        .is_some_and(|value| bucket_metadata_ready(&value))
++}
++
++fn wait_for_required_buckets(port: u16, generation: u64) -> Result<bool, String> {
++    let deadline = Instant::now() + Duration::from_secs(60);
++    loop {
++        if generation != SYNC_GENERATION.load(Ordering::SeqCst) || sync_paused_path().exists() {
++            return Ok(false);
++        }
++        if local_buckets_ready(port) {
++            info!("Local SeeSeeYou window and AFK collectors are ready");
++            return Ok(true);
++        }
++        if Instant::now() >= deadline {
++            return Err("Local window and AFK collectors are still starting".to_string());
++        }
++        thread::sleep(Duration::from_secs(1));
++    }
 +}
 +
 +fn queue_sync_trigger(sender: &mpsc::SyncSender<()>) -> Result<(), String> {
@@ -242,16 +578,70 @@ index a51b1f0..e47a393 100644
 +    }
 +
 +    thread::spawn(move || {
-+        wait_for_local_server(port);
++        while let Err(error) = wait_for_local_server(port) {
++            update_sync_runtime(|state| state.last_error = Some(error.clone()));
++            warn!("{error}; retrying local server readiness");
++            thread::sleep(Duration::from_secs(15));
++        }
++        // Never upload an old on-disk identity until the authenticated workspace
++        // explicitly resumes it. This closes the cold-start/logout race.
++        if receiver.recv().is_err() {
++            return;
++        }
 +        loop {
 +            // Coalesce any number of requests into one run. The worker waits for
 +            // each child to exit, so state.json and the canonical outbox never
 +            // have two desktop-managed sync processes writing at the same time.
 +            while receiver.try_recv().is_ok() {}
-+            if let Err(error) = run_sync_once() {
-+                warn!("{error}");
++            let config_ready = !sync_rebind_pending_path().exists()
++                && match load_validated_sync_config() {
++                    Ok(Some(_)) => true,
++                    Ok(None) => false,
++                    Err(error) => {
++                        update_sync_runtime(|state| state.last_error = Some(error));
++                        false
++                    }
++                };
++            if sync_paused_path().exists() || !config_ready {
++                match receiver.recv() {
++                    Ok(()) => continue,
++                    Err(_) => break,
++                }
 +            }
-+            match receiver.recv_timeout(Duration::from_secs(300)) {
++            update_sync_runtime(|state| {
++                state.running = true;
++                state.bucket_ready = false;
++                state.last_attempt_at_ms = Some(now_unix_ms());
++                state.last_error = None;
++            });
++            let retry_after = match run_sync_once(port) {
++                Ok(true) => {
++                    update_sync_runtime(|state| {
++                        state.running = false;
++                        state.last_success_at_ms = Some(now_unix_ms());
++                        state.last_error = None;
++                    });
++                    Duration::from_secs(300)
++                }
++                Ok(false) => {
++                    update_sync_runtime(|state| {
++                        state.running = false;
++                        state.last_error = None;
++                    });
++                    continue;
++                }
++                Err(error) => {
++                    update_sync_runtime(|state| {
++                        state.running = false;
++                        state.last_error = Some(error.clone());
++                    });
++                    warn!("{error}");
++                    // Watchers and the network often warm up after the local API.
++                    // Retry cold-start failures quickly before the normal cadence.
++                    Duration::from_secs(15)
++                }
++            };
++            match receiver.recv_timeout(retry_after) {
 +                Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
 +                Err(mpsc::RecvTimeoutError::Disconnected) => break,
 +            }
@@ -261,76 +651,242 @@ index a51b1f0..e47a393 100644
 +
 +#[tauri::command]
 +fn get_sync_status() -> DesktopSyncStatus {
-+    let migration_ok = migrate_sync_config_to_port_5600().is_ok();
 +    let binary_ready = sync_binary_path().is_some_and(|path| path.exists());
-+    let config = if migration_ok {
-+        read_to_string(sync_config_path())
-+            .ok()
-+            .and_then(|contents| serde_json::from_str::<DesktopSyncConfig>(&contents).ok())
-+    } else {
++    let paused = sync_paused_path().exists();
++    let config_result = load_validated_sync_config();
++    if let Err(error) = &config_result {
++        update_sync_runtime(|state| state.last_error = Some(error.clone()));
++    }
++    let config = if sync_rebind_pending_path().exists() {
 +        None
++    } else {
++        config_result.ok().flatten()
 +    };
++    let runtime = SYNC_RUNTIME
++        .get_or_init(|| Mutex::new(SyncRuntimeState::default()))
++        .lock()
++        .ok();
 +    DesktopSyncStatus {
-+        configured: config.is_some() && binary_ready,
++        configured: config.is_some(),
++        paused,
++        binary_ready,
++        device_id: config.as_ref().map(|value| value.device_id.clone()),
 +        employee_id: config.as_ref().map(|value| value.employee_id.clone()),
-+        team_id: config.and_then(|value| value.team_id),
++        team_id: config.as_ref().and_then(|value| value.team_id.clone()),
++        running: runtime.as_ref().is_some_and(|value| value.running),
++        bucket_ready: runtime.as_ref().is_some_and(|value| value.bucket_ready),
++        last_attempt_at_ms: runtime.as_ref().and_then(|value| value.last_attempt_at_ms),
++        last_success_at_ms: runtime.as_ref().and_then(|value| value.last_success_at_ms),
++        last_error: runtime.as_ref().and_then(|value| value.last_error.clone()),
 +    }
 +}
 +
 +#[tauri::command]
-+fn configure_sync(config: DesktopSyncConfig) -> Result<(), String> {
-+    if config.server_url.trim().is_empty()
-+        || config.local_api_url.trim().is_empty()
-+        || config.device_id.trim().is_empty()
-+        || config.employee_id.trim().is_empty()
-+        || config.device_key.trim().is_empty()
-+        || config.hmac_secret.trim().is_empty()
-+    {
-+        return Err("Incomplete sync configuration".to_string());
++fn get_or_create_installation_id() -> Result<String, String> {
++    let path = desktop_identity_path();
++    if let Ok(contents) = read_to_string(&path) {
++        if let Ok(identity) = serde_json::from_str::<serde_json::Value>(&contents) {
++            if let Some(installation_id) = identity
++                .get("installation_id")
++                .and_then(serde_json::Value::as_str)
++            {
++                if (16..=128).contains(&installation_id.len()) {
++                    return Ok(installation_id.to_string());
++                }
++            }
++        }
 +    }
-+    let serialized = serde_json::to_vec_pretty(&config)
-+        .map_err(|error| format!("Unable to encode sync configuration: {error}"))?;
-+    write(sync_config_path(), serialized)
-+        .map_err(|error| format!("Unable to save sync configuration: {error}"))?;
++    replace_installation_id()
++}
++
++fn replace_installation_id() -> Result<String, String> {
++    let machine = aw_server::device_id::get_device_id()
++        .chars()
++        .map(|character| {
++            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
++                character
++            } else {
++                '-'
++            }
++        })
++        .take(80)
++        .collect::<String>();
++    let installation_id = format!(
++        "desktop-{}-{}-{}",
++        machine,
++        now_unix_ms(),
++        std::process::id()
++    );
++    let serialized = serde_json::to_vec_pretty(&serde_json::json!({
++        "installation_id": installation_id.clone(),
++    }))
++    .map_err(|error| format!("Unable to encode desktop identity: {error}"))?;
++    write(desktop_identity_path(), serialized)
++        .map_err(|error| format!("Unable to save desktop identity: {error}"))?;
++    Ok(installation_id)
++}
++
++#[tauri::command]
++fn rotate_installation_id() -> Result<String, String> {
++    let _control = SYNC_CONTROL
++        .get_or_init(|| Mutex::new(()))
++        .lock()
++        .map_err(|_| "Sync control is unavailable".to_string())?;
++    if sync_config_path().exists() {
++        return Err("Disconnect the previous sync identity before rebinding".to_string());
++    }
++    replace_installation_id()
++}
++
++#[tauri::command]
++fn configure_sync(config: DesktopSyncConfig) -> Result<(), String> {
++    let _control = SYNC_CONTROL
++        .get_or_init(|| Mutex::new(()))
++        .lock()
++        .map_err(|_| "Sync control is unavailable".to_string())?;
++    validate_sync_config(&config)?;
++    let had_existing_config = sync_config_path().exists();
++    let previous = load_validated_sync_config().ok().flatten();
++    write(sync_paused_path(), b"paused")
++        .map_err(|error| format!("Unable to pause the previous sync: {error}"))?;
++    cancel_active_sync()?;
++    let identity_changed = previous.as_ref().map_or(had_existing_config, |old| {
++        old.device_id != config.device_id
++            || old.employee_id != config.employee_id
++            || old.team_id != config.team_id
++    });
++    let new_identity = previous.is_none();
++    let rebind_pending = sync_rebind_pending_path().exists();
++    if identity_changed || new_identity || rebind_pending {
++        remove_sync_state()?;
++        seed_fresh_sync_cursor()?;
++    }
++    write_sync_config_atomically(&config)?;
++    if rebind_pending {
++        remove_file(sync_rebind_pending_path())
++            .map_err(|error| format!("Unable to finish sync identity change: {error}"))?;
++    }
++    let paused = sync_paused_path();
++    if paused.exists() {
++        remove_file(paused).map_err(|error| format!("Unable to enable sync: {error}"))?;
++    }
++    update_sync_runtime(|state| *state = SyncRuntimeState::default());
++    trigger_sync()
++}
++
++#[tauri::command]
++fn pause_sync() -> Result<(), String> {
++    let _control = SYNC_CONTROL
++        .get_or_init(|| Mutex::new(()))
++        .lock()
++        .map_err(|_| "Sync control is unavailable".to_string())?;
++    write(sync_paused_path(), b"paused")
++        .map_err(|error| format!("Unable to pause sync: {error}"))?;
++    cancel_active_sync()?;
++    update_sync_runtime(|state| {
++        state.running = false;
++        state.last_error = None;
++    });
++    Ok(())
++}
++
++#[tauri::command]
++fn resume_sync(employee_id: String, team_id: String) -> Result<(), String> {
++    let _control = SYNC_CONTROL
++        .get_or_init(|| Mutex::new(()))
++        .lock()
++        .map_err(|_| "Sync control is unavailable".to_string())?;
++    if employee_id.trim().is_empty() || team_id.trim().is_empty() {
++        return Err("Employee and team identity are required to resume sync".to_string());
++    }
++    if sync_rebind_pending_path().exists() {
++        return Err("This computer must be re-enrolled before sync can resume".to_string());
++    }
++    let mut config = load_validated_sync_config()?
++        .ok_or_else(|| "SeeSeeYou sync is not configured".to_string())?;
++    if config.employee_id != employee_id
++        || config
++            .team_id
++            .as_deref()
++            .is_some_and(|saved_team| saved_team != team_id.as_str())
++    {
++        return Err("The saved sync identity does not match this account and team".to_string());
++    }
++    let paused = sync_paused_path();
++    if config.team_id.is_none() && !paused.exists() {
++        return Err("Pause sync before assigning a legacy configuration to a team".to_string());
++    }
++    if config.team_id.is_none() {
++        config.team_id = Some(team_id);
++        write_sync_config_atomically(&config)?;
++    }
++    if !paused.exists() {
++        // A running worker must remain reflected in SYNC_RUNTIME so clear/configure
++        // can cancel it before touching its files. The scheduler serializes this
++        // extra trigger behind the current child.
++        return trigger_sync();
++    }
++    remove_file(paused).map_err(|error| format!("Unable to resume sync: {error}"))?;
++    update_sync_runtime(|state| *state = SyncRuntimeState::default());
++    trigger_sync()
++}
++
++#[tauri::command]
++fn trigger_sync_now() -> Result<(), String> {
++    let _control = SYNC_CONTROL
++        .get_or_init(|| Mutex::new(()))
++        .lock()
++        .map_err(|_| "Sync control is unavailable".to_string())?;
++    if sync_paused_path().exists() {
++        return Err("SeeSeeYou sync is paused".to_string());
++    }
++    if sync_rebind_pending_path().exists() {
++        return Err("This computer must be re-enrolled before sync can run".to_string());
++    }
++    if load_validated_sync_config()?.is_none() {
++        return Err("SeeSeeYou sync is not configured".to_string());
++    }
 +    trigger_sync()
 +}
 +
 +#[tauri::command]
 +fn clear_sync() -> Result<(), String> {
++    let _control = SYNC_CONTROL
++        .get_or_init(|| Mutex::new(()))
++        .lock()
++        .map_err(|_| "Sync control is unavailable".to_string())?;
++    write(sync_paused_path(), b"paused")
++        .map_err(|error| format!("Unable to stop sync: {error}"))?;
++    cancel_active_sync()?;
++    write(sync_rebind_pending_path(), b"re-enroll")
++        .map_err(|error| format!("Unable to mark sync identity for re-enrollment: {error}"))?;
 +    let path = sync_config_path();
 +    if path.exists() {
 +        remove_file(path).map_err(|error| format!("Unable to clear sync configuration: {error}"))?;
 +    }
++    remove_sync_state()?;
++    update_sync_runtime(|state| *state = SyncRuntimeState::default());
 +    Ok(())
 +}
 +
- fn init_tray_id(id: TrayIconId) {
-     TRAY_ID
-         .set(TrayIdWrapper(id))
-@@ -232,8 +421,8 @@ pub fn handle_first_run() {
-             let app = &*get_app_handle().lock().expect("Failed to get app handle");
-             app.notification()
-                 .builder()
+@@ -235,2 +949,2 @@ pub fn handle_first_run() {
 -                .title("Aw-Tauri")
 -                .body("Welcome to Aw-Tauri! Click on the tray icon to launch the dashboard")
 +                .title("SeeSeeYou")
-+                .body("SeeSeeYou is ready. Your local activity stays private on this computer.")
-                 .show()
-                 .expect("Failed to show first run notification");
-             if let Some(window) = app.webview_windows().get("main") {
-@@ -251,6 +440,8 @@ fn build_dashboard_url(port: u16, api_key: Option<&str>) -> Url {
-         url.query_pairs_mut().append_pair("token", api_key);
-     }
- 
-+    url.set_fragment(Some("/my-day"));
-+
-     url
- }
- 
-@@ -469,7 +660,17 @@ pub(crate) fn get_config() -> &'static UserConfig {
- 
-             // Try to parse the config file
-             match toml::from_str::<UserConfig>(&config_str) {
++                .body("SeeSeeYou is ready. Raw activity stays on this computer; privacy-reduced summaries sync only to your authorized team.")
+@@ -246,9 +960,2 @@ pub fn handle_first_run() {
+-fn build_dashboard_url(port: u16, api_key: Option<&str>) -> Url {
+-    let mut url =
+-        Url::parse(&format!("http://localhost:{port}/")).expect("Failed to parse localhost url");
+-
+-    if let Some(api_key) = api_key.filter(|key| !key.is_empty()) {
+-        url.query_pairs_mut().append_pair("token", api_key);
+-    }
+-
+-    url
++fn build_dashboard_url(_port: u16, _api_key: Option<&str>) -> Url {
++    Url::parse(SEESEEYOU_WORKSPACE_URL).expect("Failed to parse SeeSeeYou workspace URL")
+@@ -472 +1179,11 @@ pub(crate) fn get_config() -> &'static UserConfig {
 -                Ok(config) => config,
 +                Ok(mut config) => {
 +                    if config.port == 5601 {
@@ -343,187 +899,132 @@ index a51b1f0..e47a393 100644
 +                    }
 +                    config
 +                }
-                 Err(e) => {
-                     warn!("Failed to parse config file: {}. Using default config.", e);
- 
-@@ -677,11 +878,16 @@ fn greet(name: &str) -> String {
- }
- 
- #[tauri::command]
+@@ -680,4 +1397,4 @@ fn greet(name: &str) -> String {
 -fn open_external(url: String, app: tauri::AppHandle) {
 -    info!("Opening external URL in browser: {}", url);
 -    if let Err(e) = app.opener().open_url(&url, None::<&str>) {
 -        warn!("Failed to open URL in browser: {}", e);
 +fn open_external(url: String, app: tauri::AppHandle) -> Result<(), String> {
-+    if !(url.starts_with("https://") || url.starts_with("http://")) {
-+        return Err("Only HTTP and HTTPS links can be opened externally".to_string());
-     }
++    let parsed = Url::parse(&url).map_err(|_| "Invalid external URL".to_string())?;
++    if parsed.scheme() != "https" || parsed.host_str().is_none() {
++        return Err("Only secure HTTPS links can be opened externally".to_string());
+@@ -684,0 +1402,6 @@ fn open_external(url: String, app: tauri::AppHandle) {
 +    // OAuth URLs contain a one-time state value in the query string. Never put
 +    // the full URL in the desktop logs.
 +    info!("Opening an external URL in the system browser");
 +    app.opener()
 +        .open_url(&url, None::<&str>)
 +        .map_err(|e| format!("Failed to open URL in browser: {e}"))
- }
- 
- /// Downloads and installs an update, showing a progress dialog.
-@@ -797,9 +1003,7 @@ async fn download_and_install_update(handle: AppHandle, update: tauri_plugin_upd
- /// Returns true if the user has opted out of update checks via
- /// `AW_DISABLE_AUTO_UPDATE` (truthy values: 1, true, yes, on).
- fn updates_disabled_via_env() -> bool {
+@@ -800,3 +1523 @@ fn updates_disabled_via_env() -> bool {
 -    env::var("AW_DISABLE_AUTO_UPDATE")
 -        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 -        .unwrap_or(false)
 +    true
- }
- 
- #[tauri::command]
-@@ -906,6 +1110,9 @@ pub fn run() {
-                 //TODO: Some of this setup could run concurrently. Could slash a few 100ms in startup?
-                 init_app_handle(app.handle().clone());
-                 let user_config = get_config();
+@@ -908,0 +1630,3 @@ pub fn run() {
 +                if let Err(error) = migrate_sync_config_to_port_5600() {
 +                    warn!("{error}");
 +                }
-                 // Bring the OS login item in line with `[autostart] enabled`.
-                 autostart::sync_from_config(app.handle());
- 
-@@ -950,9 +1157,11 @@ pub fn run() {
-                 };
-                 if !is_port_available(port).expect("Failed to check port availability") {
-                     app.dialog()
+@@ -953 +1677,3 @@ pub fn run() {
 -                        .message(format!("Port {} is already in use", port))
 +                        .message(format!(
 +                            "SeeSeeYou 无法启动：本地端口 {port} 已被占用。请退出旧版 ActivityWatch 或重复运行的 SeeSeeYou 后重试。\n\nSeeSeeYou cannot start because local port {port} is already in use. Quit the existing ActivityWatch or duplicate SeeSeeYou instance and try again."
 +                        ))
-                         .kind(MessageDialogKind::Error)
+@@ -955 +1681 @@ pub fn run() {
 -                        .title("Error")
 +                        .title("SeeSeeYou")
-                         .show(|_| {});
-                     panic!("Port {} is already in use", port);
-                 }
-@@ -969,6 +1178,7 @@ pub fn run() {
-                 }
-                 let dashboard_url = build_dashboard_url(port, dashboard_api_key);
-                 tauri::async_runtime::spawn(build_rocket(server_state, aw_config).launch());
+@@ -971,0 +1698,2 @@ pub fn run() {
++                let manager_state = manager::start_manager_with_port(port);
 +                start_sync_scheduler(port);
-                 // Create main window programmatically to attach initialization script.
-                 // The script intercepts clicks on external links and opens them in the system
-                 // browser via the open_external Tauri command. This approach works reliably for
-@@ -979,36 +1189,38 @@ pub fn run() {
-                     "main",
-                     tauri::WebviewUrl::External(dashboard_url),
-                 )
+@@ -982,16 +1710,8 @@ pub fn run() {
 -                .title("aw-tauri")
 -                .inner_size(800.0, 600.0)
 -                .visible(false)
-+                .title("SeeSeeYou")
-+                .inner_size(1180.0, 780.0)
-+                .min_inner_size(920.0, 640.0)
-+                .visible(true)
-                 .initialization_script(
-                     r#"
-                     document.addEventListener('click', function(e) {
-                         var el = e.target;
-                         while (el && el.tagName !== 'A') { el = el.parentElement; }
+-                .initialization_script(
+-                    r#"
+-                    document.addEventListener('click', function(e) {
+-                        var el = e.target;
+-                        while (el && el.tagName !== 'A') { el = el.parentElement; }
 -                        if (el && el.href && !/^(https?:\/\/(localhost|127\.0\.0\.1)|tauri:|about:)/.test(el.href)) {
 -                            e.preventDefault();
 -                            e.stopPropagation();
 -                            window.__TAURI_INTERNALS__.invoke('open_external', { url: el.href });
-+                        if (el && el.href) {
-+                            var target = new URL(el.href, window.location.href);
-+                            var isInternal = target.origin === window.location.origin ||
-+                                target.protocol === 'tauri:' || target.protocol === 'about:';
-+                            if (!isInternal) {
-+                                e.preventDefault();
-+                                e.stopPropagation();
-+                                window.__TAURI_INTERNALS__.invoke('open_external', { url: target.href });
-+                            }
-                         }
-                     }, true);
-                     "#,
-                 )
-                 .build()
-                 .expect("Failed to create main window");
+-                        }
+-                    }, true);
+-                    "#,
+-                )
++                .title("SeeSeeYou")
++                .inner_size(1180.0, 780.0)
++                .min_inner_size(920.0, 640.0)
++                .visible(true)
++                .initialization_script(include_str!("seeseeyou_bridge.js"))
++                .on_navigation(|url| {
++                    url.scheme() == "https" && url.host_str() == Some("watch.sding.me")
++                })
+@@ -1000 +1719,0 @@ pub fn run() {
 -                let manager_state = manager::start_manager();
-+                let manager_state = manager::start_manager_with_port(port);
- 
+@@ -1002 +1721 @@ pub fn run() {
 -                let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)
 +                let open = MenuItem::with_id(app, "open", "Open SeeSeeYou", true, None::<&str>)
-                     .expect("Failed to create open menu item");
+@@ -1004 +1723 @@ pub fn run() {
 -                let quit = MenuItem::with_id(app, "quit", "Quit ActivityWatch", true, None::<&str>)
 +                let quit = MenuItem::with_id(app, "quit", "Quit SeeSeeYou", true, None::<&str>)
-                     .expect("Failed to create quit menu item");
+@@ -1006 +1724,0 @@ pub fn run() {
 -                let autostart_item = autostart::build_menu_item(app.handle());
- 
+@@ -1008,4 +1726 @@ pub fn run() {
 -                // Placeholder tray menu, replaced by manager::build_tray_menu once
 -                // modules are discovered. Kept in sync with it so the toggle is
 -                // available even if no modules are ever found.
 -                let menu = Menu::with_items(app, &[&open, &autostart_item, &quit])
 +                let menu = Menu::with_items(app, &[&open, &quit])
-                     .expect("Failed to create tray menu");
- 
-                 #[cfg(not(target_os = "windows"))]
-@@ -1030,7 +1242,7 @@ pub fn run() {
-                     )
-                     .menu(&menu)
-                     .show_menu_on_left_click(true)
+@@ -1033 +1748 @@ pub fn run() {
 -                    .tooltip("ActivityWatch");
 +                    .tooltip("SeeSeeYou");
-                 let tray = tray_builder.build(app).expect("Failed to create tray");
- 
-                 init_tray_id(tray.id().clone());
-@@ -1186,7 +1398,10 @@ pub fn run() {
-             restart_app,
-             close_update_progress,
-             get_autostart_enabled,
+@@ -1189 +1904,9 @@ pub fn run() {
 -            set_autostart_enabled
 +            set_autostart_enabled,
 +            get_sync_status,
++            get_or_create_installation_id,
++            rotate_installation_id,
 +            configure_sync,
++            pause_sync,
++            resume_sync,
++            trigger_sync_now,
 +            clear_sync
-         ])
-         .run(tauri::generate_context!())
-         .expect("error while running tauri application");
-@@ -1194,13 +1409,18 @@ pub fn run() {
- 
- #[cfg(test)]
- mod tests {
+@@ -1197 +1920,7 @@ mod tests {
 -    use super::build_dashboard_url;
 +    use super::{
-+        build_dashboard_url, migrate_sync_config_local_api_url, queue_sync_trigger,
-+        wait_for_local_server, DesktopSyncConfig, DEFAULT_LOCAL_API_URL,
++        bucket_metadata_ready, build_dashboard_url, migrate_sync_config_local_api_url, queue_sync_trigger,
++        fresh_sync_cursor_timestamp, validate_sync_config, wait_for_local_server, DesktopSyncConfig,
++        DEFAULT_LOCAL_API_URL, SEESEEYOU_WORKSPACE_URL,
 +    };
 +    use std::net::TcpListener;
 +    use std::sync::mpsc;
- 
-     #[test]
-     fn build_dashboard_url_omits_token_when_auth_disabled() {
-         assert_eq!(
-             build_dashboard_url(5600, None).as_str(),
+@@ -1203 +1932 @@ mod tests {
 -            "http://localhost:5600/"
-+            "http://localhost:5600/#/my-day"
-         );
-     }
- 
-@@ -1208,7 +1428,7 @@ mod tests {
-     fn build_dashboard_url_ignores_empty_api_keys() {
-         assert_eq!(
-             build_dashboard_url(5600, Some("")).as_str(),
++            SEESEEYOU_WORKSPACE_URL
+@@ -1211 +1940 @@ mod tests {
 -            "http://localhost:5600/"
-+            "http://localhost:5600/#/my-day"
-         );
-     }
- 
-@@ -1216,10 +1436,81 @@ mod tests {
-     fn build_dashboard_url_appends_encoded_token() {
-         assert_eq!(
-             build_dashboard_url(5600, Some("secret+ /?=&")).as_str(),
++            SEESEEYOU_WORKSPACE_URL
+@@ -1219 +1948,100 @@ mod tests {
 -            "http://localhost:5600/?token=secret%2B+%2F%3F%3D%26"
-+            "http://localhost:5600/?token=secret%2B+%2F%3F%3D%26#/my-day"
-         );
-     }
- 
++            SEESEEYOU_WORKSPACE_URL
++        );
++    }
++
++    #[test]
++    fn desktop_sync_rejects_untrusted_endpoints() {
++        let config = DesktopSyncConfig {
++            server_url: "https://example.com".to_string(),
++            local_api_url: DEFAULT_LOCAL_API_URL.to_string(),
++            device_id: "device".to_string(),
++            employee_id: "employee".to_string(),
++            team_id: Some("team-a".to_string()),
++            device_key: "token".to_string(),
++            hmac_secret: "secret".to_string(),
++        };
++        assert!(super::configure_sync(config).is_err());
++    }
++
 +    #[test]
 +    fn sync_config_migration_moves_previous_desktop_ports_to_5600() {
 +        for previous in [
@@ -545,7 +1046,7 @@ index a51b1f0..e47a393 100644
 +    }
 +
 +    #[test]
-+    fn sync_config_migration_preserves_custom_ports() {
++    fn sync_config_rejects_custom_local_ports() {
 +        let mut config = DesktopSyncConfig {
 +            server_url: "https://watch.sding.me".to_string(),
 +            local_api_url: "http://localhost:5666/api/0".to_string(),
@@ -556,8 +1057,7 @@ index a51b1f0..e47a393 100644
 +            hmac_secret: "secret".to_string(),
 +        };
 +        assert!(!migrate_sync_config_local_api_url(&mut config));
-+        assert_eq!(config.local_api_url, "http://localhost:5666/api/0");
-+        assert_eq!(config.team_id.as_deref(), Some("team-a"));
++        assert!(validate_sync_config(&config).is_err());
 +    }
 +
 +    #[test]
@@ -574,6 +1074,7 @@ index a51b1f0..e47a393 100644
 +        )
 +        .expect("legacy sync config should remain readable");
 +        assert_eq!(config.team_id, None);
++        assert!(validate_sync_config(&config).is_ok());
 +    }
 +
 +    #[test]
@@ -589,32 +1090,53 @@ index a51b1f0..e47a393 100644
 +    }
 +
 +    #[test]
++    fn sync_bucket_readiness_requires_window_and_afk_collectors() {
++        let complete = serde_json::json!({
++            "aw-watcher-window_desktop": {"type": "currentwindow"},
++            "aw-watcher-afk_desktop": {"type": "afkstatus"}
++        });
++        let incomplete = serde_json::json!({
++            "aw-watcher-window_desktop": {"type": "currentwindow"}
++        });
++        assert!(bucket_metadata_ready(&complete));
++        assert!(!bucket_metadata_ready(&incomplete));
++    }
++
++    #[test]
++    fn fresh_identity_cursor_skips_the_window_containing_the_identity_change() {
++        assert_eq!(
++            fresh_sync_cursor_timestamp(600_001),
++            "1970-01-01T00:15:00.000Z"
+@@ -1220,0 +2049,15 @@ mod tests {
++        assert_eq!(
++            fresh_sync_cursor_timestamp(59_999),
++            "1970-01-01T00:05:00.000Z"
++        );
++        assert_eq!(
++            fresh_sync_cursor_timestamp(600_000),
++            "1970-01-01T00:10:00.000Z"
++        );
++    }
++
++    #[test]
 +    fn sync_config_server_readiness_detects_bound_port() {
 +        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
 +        let port = listener.local_addr().expect("read test address").port();
-+        wait_for_local_server(port);
-+    }
-+
-     #[test]
-     fn test_user_config_parsing() {
-         use super::UserConfig;
++        wait_for_local_server(port).expect("bound port should be ready");
 diff --git a/src-tauri/src/manager.rs b/src-tauri/src/manager.rs
 index 56a1e71..7047205 100644
 --- a/src-tauri/src/manager.rs
 +++ b/src-tauri/src/manager.rs
-@@ -286,66 +286,13 @@ fn update_tray_menu(modules: &ModulesSnapshot, event_tx: &Option<Sender<ManagerE
- 
- fn build_tray_menu(
-     app: &AppHandle,
+@@ -289 +289 @@ fn build_tray_menu(
 -    modules: &ModulesSnapshot,
 +    _modules: &ModulesSnapshot,
- ) -> HashMap<String, CheckMenuItem<Wry>> {
+@@ -291 +291 @@ fn build_tray_menu(
 -    let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)
 +    let open = MenuItem::with_id(app, "open", "Open SeeSeeYou", true, None::<&str>)
-         .expect("failed to create open menu item");
+@@ -293 +293 @@ fn build_tray_menu(
 -    let quit = MenuItem::with_id(app, "quit", "Quit ActivityWatch", true, None::<&str>)
 +    let quit = MenuItem::with_id(app, "quit", "Quit SeeSeeYou", true, None::<&str>)
-         .expect("failed to create quit menu item");
+@@ -295,54 +295 @@ fn build_tray_menu(
 -
 -    let mut module_items = HashMap::new();
 -    let mut modules_submenu_builder = SubmenuBuilder::new(app, "Modules");
@@ -670,35 +1192,17 @@ index 56a1e71..7047205 100644
 -    )
 -    .expect("Failed to create tray menu");
 +    let menu = Menu::with_items(app, &[&open, &quit]).expect("Failed to create tray menu");
- 
-     let tray_id = get_tray_id();
-     app.tray_by_id(tray_id)
-@@ -353,7 +300,7 @@ fn build_tray_menu(
-         .set_menu(Some(menu))
-         .expect("Failed to set tray menu");
- 
+@@ -356 +303 @@ fn build_tray_menu(
 -    module_items
 +    HashMap::new()
- }
- 
- #[cfg(unix)]
-@@ -650,9 +597,9 @@ fn handle(
-                                     &event_tx_for_restart,
-                                     &name_clone,
-                                     &format!(
+@@ -653,3 +600,3 @@ fn handle(
 -                                        "Couldn’t restart after several tries, so it was left stopped.\n\n\
 -                                         Open the ActivityWatch tray menu and choose Open log folder, \
 -                                         then check the log for “{name_clone}” for the error details."
 +                                        "Background collection is temporarily unavailable.\n\n\
 +                                         SeeSeeYou will keep retrying automatically. \
 +                                         No action is needed."
-                                     ),
-                                     module_alert_ui::StatusKind::Warning,
-                                 );
-@@ -750,7 +697,14 @@ fn start_generic_module_thread(
-         #[cfg(windows)]
-         command.creation_flags(CREATE_NO_WINDOW);
- 
+@@ -753 +700,8 @@ fn start_generic_module_thread(
 -        let child = command.stdout(std::process::Stdio::piped()).spawn();
 +        if let Some(module_dir) = path.parent() {
 +            command.current_dir(module_dir);
@@ -708,13 +1212,7 @@ index 56a1e71..7047205 100644
 +            .stdout(std::process::Stdio::piped())
 +            .stderr(std::process::Stdio::piped())
 +            .spawn();
- 
-         let child = match child {
-             Ok(c) => c,
-@@ -1050,57 +1004,18 @@ fn route_notification(event_tx: &Option<Sender<ManagerEvent>>, title: &str, mess
-     send_tauri_notification(title, message);
- }
- 
+@@ -1053,7 +1007 @@ fn route_notification(event_tx: &Option<Sender<ManagerEvent>>, title: &str, mess
 -/// Compact one-line text for tray notifications (no multi-line body).
 -fn notification_summary(module_name: &str, message: &str) -> String {
 -    let first_line = message.lines().next().unwrap_or(message).trim();
@@ -723,14 +1221,13 @@ index 56a1e71..7047205 100644
 -
 -/// Route a module crash warning: mini → notification, daemon → log, GUI → replaceable webview.
 +/// Collector failures are retried silently and recorded in the SeeSeeYou logs.
- fn show_module_warning(
+@@ -1061 +1009 @@ fn show_module_warning(
 -    event_tx: &Option<Sender<ManagerEvent>>,
 +    _event_tx: &Option<Sender<ManagerEvent>>,
-     module_name: &str,
-     message: &str,
+@@ -1064 +1012 @@ fn show_module_warning(
 -    kind: module_alert_ui::StatusKind,
 +    _kind: module_alert_ui::StatusKind,
- ) {
+@@ -1066,16 +1014 @@ fn show_module_warning(
 -    if let Some(tx) = event_tx {
 -        let _ = tx.send(ManagerEvent::Notification {
 -            title: "ActivityWatch".to_string(),
@@ -748,7 +1245,7 @@ index 56a1e71..7047205 100644
 -        .clone();
 -    module_alert_ui::show_or_update(&app, module_name, message, kind);
 +    warn!("SeeSeeYou background collection component {module_name}: {message}");
- }
+@@ -1083,21 +1016,3 @@ fn show_module_warning(
 -
 -/// Update the module-alert UI when a module comes back after a crash restart.
 -/// Does not open a new window if the user already dismissed it.
@@ -773,13 +1270,7 @@ index 56a1e71..7047205 100644
 +/// Recovery remains available in logs without exposing internal module names in the UI.
 +fn show_module_recovered(_event_tx: &Option<Sender<ManagerEvent>>, module_name: &str) {
 +    info!("SeeSeeYou background collection component {module_name} recovered");
- }
- 
- fn send_tauri_notification(title: &str, message: &str) {
-@@ -1314,5 +1229,23 @@ fn discover_modules() -> BTreeMap<String, PathBuf> {
-         }
-     }
- 
+@@ -1316,0 +1232,18 @@ fn discover_modules() -> BTreeMap<String, PathBuf> {
 +    // Always prefer the modules shipped beside this executable. This is both
 +    // portable-location safe and independent of discovery paths saved by older releases.
 +    if let Some(app_dir) = env::current_exe()
@@ -798,30 +1289,794 @@ index 56a1e71..7047205 100644
 +        }
 +    }
 +
-     found_modules
- }
+diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
+new file mode 100644
+index 0000000..76d7bda
+--- /dev/null
++++ b/src-tauri/src/seeseeyou_bridge.js
+@@ -0,0 +1,771 @@
++(function () {
++  'use strict';
++
++  var TRUSTED_ORIGIN = 'https://watch.sding.me';
++  var API = TRUSTED_ORIGIN + '/api/v1';
++  var TOKEN_KEYS = ['usage_admin_token', 'my_day_session_token'];
++  var TEAM_KEY = 'my_day_selected_team_id';
++  var syncRunning = false;
++  var syncRerunRequested = false;
++  var syncClearPending = false;
++  var loggingOut = false;
++  var rebindRequired = false;
++  var lastSessionToken = '';
++  var lastTeamSelection = '';
++  var lastSyncAttempt = 0;
++  var lastNativeTriggerAt = 0;
++
++  if (window.location.origin !== TRUSTED_ORIGIN) return;
++
++  function invoke(command, args) {
++    var candidate = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
++    if (typeof candidate !== 'function') return Promise.reject(new Error('Native bridge unavailable'));
++    return candidate(command, args || {});
++  }
++
++  function sessionToken() {
++    for (var i = 0; i < TOKEN_KEYS.length; i += 1) {
++      var token = window.localStorage.getItem(TOKEN_KEYS[i]);
++      if (token) return token;
++    }
++    return '';
++  }
++
++  function isEnglish() {
++    var lang = String(document.documentElement.lang || '').toLowerCase();
++    if (lang.indexOf('en') === 0) return true;
++    try {
++      return window.WorkI18n && typeof window.WorkI18n.isEnglish === 'function'
++        ? window.WorkI18n.isEnglish()
++        : false;
++    } catch (_error) {
++      return false;
++    }
++  }
++
++  function copy(zh, en) {
++    return isEnglish() ? en : zh;
++  }
++
++  function brandDesktopWorkspace() {
++    document.title = 'SeeSeeYou';
++    var company = document.querySelector('.global-company');
++    if (company) company.textContent = 'SeeSeeYou';
++    var currentMark = document.querySelector('.global-brand-mark');
++    if (currentMark && currentMark.tagName === 'IMG') {
++      var mark = document.createElement('span');
++      mark.className = currentMark.className;
++      mark.textContent = 'S';
++      mark.setAttribute('aria-hidden', 'true');
++      mark.style.cssText = [
++        'display:grid',
++        'place-items:center',
++        'background:linear-gradient(145deg,#0d9588,#08675f)',
++        'box-shadow:0 8px 22px rgba(13,143,131,.24)',
++        'color:#fff',
++        'font-size:20px',
++        'font-weight:900'
++      ].join(';');
++      currentMark.replaceWith(mark);
++    }
++  }
++
++  function ensureSyncBadge() {
++    var existing = document.getElementById('seeseeyouDesktopSync');
++    if (existing) return existing;
++    var host = document.querySelector('.global-actions');
++    if (!host) return null;
++    var badge = document.createElement('button');
++    badge.id = 'seeseeyouDesktopSync';
++    badge.type = 'button';
++    badge.style.cssText = [
++      'display:none',
++      'min-height:32px',
++      'padding:0 11px',
++      'border:1px solid #c8ded9',
++      'border-radius:999px',
++      'background:#f5faf8',
++      'color:#526965',
++      'font:inherit',
++      'font-size:12px',
++      'font-weight:750',
++      'cursor:pointer',
++      'white-space:nowrap'
++    ].join(';');
++    badge.addEventListener('click', function () {
++      if (rebindRequired) {
++        rebindDesktopSync();
++      } else {
++        ensureDesktopSync(true);
++      }
++    });
++    host.insertBefore(badge, host.firstChild);
++    return badge;
++  }
++
++  function setSyncState(state, detail, label) {
++    var badge = ensureSyncBadge();
++    if (!badge) return;
++    if (state === 'hidden') {
++      badge.style.display = 'none';
++      return;
++    }
++    badge.style.display = 'inline-flex';
++    badge.style.alignItems = 'center';
++    badge.style.gap = '6px';
++    badge.dataset.state = state;
++    badge.title = detail || '';
++    if (state === 'active') {
++      badge.textContent = label || copy('● 本机同步已开启', '● Local sync enabled');
++      badge.style.borderColor = '#bfe3dd';
++      badge.style.background = '#eaf8f5';
++      badge.style.color = '#087d75';
++    } else if (state === 'connecting') {
++      badge.textContent = copy('● 正在连接本机', '● Connecting local sync');
++      badge.style.borderColor = '#c8ded9';
++      badge.style.background = '#f5faf8';
++      badge.style.color = '#526965';
++    } else if (state === 'waiting') {
++      badge.textContent = label || copy('● 加入团队后同步', '● Join a team to sync');
++      badge.style.borderColor = '#c8ded9';
++      badge.style.background = '#f5faf8';
++      badge.style.color = '#526965';
++    } else {
++      badge.textContent = copy('● 同步异常 · 重试', '● Sync issue · Retry');
++      badge.style.borderColor = '#ecd9b4';
++      badge.style.background = '#fdf5e8';
++      badge.style.color = '#8b5d0a';
++    }
++  }
++
++  async function apiRequest(path, options, tokenOverride) {
++    var opts = options || {};
++    var headers = new Headers(opts.headers || {});
++    var token = tokenOverride === undefined ? sessionToken() : tokenOverride;
++    if (token) {
++      headers.set('Authorization', 'Bearer ' + token);
++      headers.set('X-Admin-Token', token);
++    }
++    if (opts.body && !(opts.body instanceof FormData) && !headers.has('Content-Type')) {
++      headers.set('Content-Type', 'application/json');
++    }
++    var response = await window.fetch(API + path, Object.assign({}, opts, { headers: headers }));
++    var body = await response.json().catch(function () { return null; });
++    if (!response.ok) {
++      var detail = body && body.detail;
++      var message = typeof detail === 'string'
++        ? detail
++        : detail && typeof detail.message === 'string'
++          ? detail.message
++          : 'Request failed (' + response.status + ')';
++      var error = new Error(message);
++      error.status = response.status;
++      error.code = detail && typeof detail === 'object' ? String(detail.code || '') : '';
++      throw error;
++    }
++    return body;
++  }
++
++  async function installationId() {
++    return invoke('get_or_create_installation_id');
++  }
++
++  function selectedTeam(teams) {
++    var selected = window.localStorage.getItem(TEAM_KEY) || '';
++    if (teams.some(function (team) { return team.team_id === selected; })) return selected;
++    return teams.length === 1 ? teams[0].team_id : '';
++  }
++
++  function syncContextChanged(token, teamSelection) {
++    return sessionToken() !== token ||
++      (window.localStorage.getItem(TEAM_KEY) || '') !== teamSelection;
++  }
++
++  function teamName(teams, teamId) {
++    var team = teams.find(function (item) { return item.team_id === teamId; });
++    return team ? String(team.name || team.team_id) : String(teamId || '');
++  }
++
++  function syncErrorDetail(error) {
++    if (error && error.status === 404) {
++      return copy('服务器尚未部署桌面同步接口，请更新服务器后重试。',
++        'The desktop sync API is not deployed on the server yet.');
++    }
++    if (error && error.status === 401) {
++      return copy('登录状态已失效，请重新登录。', 'Your session expired. Sign in again.');
++    }
++    if (error && error.code === 'no_active_team') {
++      return copy('账号没有可用团队，加入团队后即可同步。', 'Join an active team to enable sync.');
++    }
++    if (error && (error.code === 'device_team_change_forbidden' ||
++        error.code === 'device_employee_change_forbidden')) {
++      return copy('这台电脑曾绑定其他团队或账号，点击同步状态可安全重新绑定。',
++        'This computer was connected to another team or account. Click the sync status to rebind safely.');
++    }
++    return error && error.message
++      ? String(error.message)
++      : copy('无法连接本机同步服务。', 'Unable to connect local sync.');
++  }
++
++  async function rebindDesktopSync() {
++    if (syncRunning || loggingOut) return;
++    var confirmed = window.confirm(copy(
++      '原团队已不可用。是否将这台电脑重新绑定到当前团队？旧设备的历史记录会保留。',
++      'The previous team is no longer available. Rebind this computer to the current team? The old device history will be preserved.'
++    ));
++    if (!confirmed) return;
++    setSyncState('connecting', copy('正在重新绑定这台电脑。', 'Rebinding this computer.'));
++    try {
++      await invoke('clear_sync');
++      await invoke('rotate_installation_id');
++      rebindRequired = false;
++      lastSyncAttempt = 0;
++      await ensureDesktopSync(true);
++    } catch (error) {
++      setSyncState('error', syncErrorDetail(error));
++    }
++  }
++
++  async function ensureDesktopSync(force) {
++    if (loggingOut) return;
++    var token = sessionToken();
++    var teamSelection = window.localStorage.getItem(TEAM_KEY) || '';
++    if (syncRunning) {
++      if (force || token !== lastSessionToken || teamSelection !== lastTeamSelection) {
++        syncRerunRequested = true;
++      }
++      return;
++    }
++    if (!force && token === lastSessionToken && teamSelection === lastTeamSelection &&
++        Date.now() - lastSyncAttempt < 30000) return;
++
++    syncRunning = true;
++    syncRerunRequested = false;
++    lastSyncAttempt = Date.now();
++    try {
++      if (!token) {
++        rebindRequired = false;
++        setSyncState('hidden');
++        var loggedOutStatus = await invoke('get_sync_status');
++        if ((loggedOutStatus && loggedOutStatus.configured) ||
++            syncClearPending) {
++          await invoke('clear_sync');
++        }
++        lastSessionToken = '';
++        lastTeamSelection = '';
++        syncClearPending = false;
++        return;
++      }
++
++      setSyncState('connecting');
++      if ((lastSessionToken && token !== lastSessionToken) || syncClearPending) {
++        try {
++          await invoke('pause_sync');
++          syncClearPending = false;
++        } catch (_error) {
++          syncClearPending = true;
++          throw new Error(copy('无法断开旧账号的本机同步，请稍后重试。',
++            'Unable to disconnect the previous local sync. Try again.'));
++        }
++      }
++      lastSessionToken = token;
++      lastTeamSelection = teamSelection;
++
++      var status = await invoke('get_sync_status');
++      if (syncContextChanged(token, teamSelection)) {
++        syncRerunRequested = true;
++        return;
++      }
++      var teamData = await apiRequest('/me/teams', {}, token);
++      if (syncContextChanged(token, teamSelection)) {
++        syncRerunRequested = true;
++        return;
++      }
++      var teams = Array.isArray(teamData.items) ? teamData.items : [];
++      if (!teams.length) {
++        rebindRequired = false;
++        if (status && status.configured && !status.paused) await invoke('pause_sync');
++        setSyncState('waiting', copy('加入或创建团队后，这台电脑会自动开始同步。',
++          'Join or create a team and this computer will start syncing automatically.'));
++        return;
++      }
++
++      if (status && status.configured) {
++        if (status.employee_id && status.employee_id !== teamData.employee_id) {
++          await invoke('clear_sync');
++          status = await invoke('get_sync_status');
++        }
++      }
++
++      if (status && status.configured) {
++        if (status.team_id && !teams.some(function (team) { return team.team_id === status.team_id; })) {
++          await invoke('pause_sync');
++          rebindRequired = true;
++          throw new Error(copy('原团队已不可用，点击同步状态可重新绑定当前团队。',
++            'The previous team is no longer available. Click the sync status to rebind to the current team.'));
++        }
++        rebindRequired = false;
++        if (status.binary_ready === false) {
++          throw new Error(copy('后台同步程序缺失，请重新安装 SeeSeeYou。',
++            'The background sync program is missing. Reinstall SeeSeeYou.'));
++        }
++        var resumeTeamId = status.team_id || selectedTeam(teams);
++        if (!resumeTeamId) {
++          throw new Error(copy('请先选择这台电脑所属的团队，然后点击重试。',
++            'Choose this computer\'s team, then retry.'));
++        }
++        var boundTeamName = teamName(teams, resumeTeamId);
++        if (status.paused || !status.team_id) {
++          if (!status.paused) await invoke('pause_sync');
++          await invoke('resume_sync', {
++            employeeId: teamData.employee_id,
++            teamId: resumeTeamId
++          });
++          if (loggingOut || syncContextChanged(token, teamSelection)) {
++            await invoke('pause_sync');
++            return;
++          }
++          lastNativeTriggerAt = Date.now();
++          setSyncState('connecting', copy('正在恢复本机同步。', 'Resuming local sync.'));
++          window.setTimeout(function () { ensureDesktopSync(true); }, 1800);
++          return;
++        }
++        if (status.last_error) {
++          if (force && Date.now() - lastNativeTriggerAt > 10000) {
++            lastNativeTriggerAt = Date.now();
++            await invoke('trigger_sync_now');
++            setSyncState('connecting', copy('正在重试后台同步。', 'Retrying background sync.'));
++            window.setTimeout(function () { ensureDesktopSync(true); }, 1800);
++            return;
++          }
++          throw new Error(copy('最近一次后台同步未成功：', 'The latest background sync failed: ') +
++            String(status.last_error));
++        }
++        if (status.running || !status.last_success_at_ms) {
++          if (!status.running && Date.now() - lastNativeTriggerAt > 10000) {
++            lastNativeTriggerAt = Date.now();
++            await invoke('trigger_sync_now');
++          }
++          setSyncState('connecting', copy('首次同步完成后会自动更新状态。',
++            'The status will update after the first sync completes.'));
++          window.setTimeout(function () { ensureDesktopSync(true); }, 1800);
++          return;
++        }
++        var selectedDiffers = teamSelection && status.team_id && teamSelection !== status.team_id;
++        var detail = selectedDiffers
++          ? copy('当前页面切换到了其他团队；为保护历史归属，本机活动仍固定同步至 ',
++              'The page is showing another team. To protect historical attribution, local activity remains synced to ') + boundTeamName
++          : copy('最近一次同步已成功。本机活动固定同步至 ',
++              'The latest sync succeeded. Local activity is assigned to ') + boundTeamName;
++        setSyncState('active', detail,
++          copy('● 本机同步：', '● Local sync: ') + boundTeamName);
++        return;
++      }
++
++      var teamId = selectedTeam(teams);
++      if (!teamId) {
++        throw new Error(copy('请先在右上角选择这台电脑所属的团队，然后点击重试。',
++          'Choose this computer\'s team, then retry.'));
++      }
++      var nativeInstallationId = await installationId();
++      if (syncContextChanged(token, teamSelection)) {
++        syncRerunRequested = true;
++        return;
++      }
++      var enrollment = await apiRequest('/devices/auto-enroll', {
++        method: 'POST',
++        headers: { 'X-Team-ID': teamId },
++        body: JSON.stringify({
++          installation_id: nativeInstallationId,
++          device_name: 'SeeSeeYou Windows',
++          platform: 'Windows'
++        })
++      }, token);
++      if (syncContextChanged(token, teamSelection)) {
++        syncRerunRequested = true;
++        return;
++      }
++      await invoke('configure_sync', {
++        config: {
++          server_url: TRUSTED_ORIGIN,
++          local_api_url: 'http://localhost:5600/api/0',
++          device_id: enrollment.device.device_id,
++          employee_id: enrollment.device.employee_id,
++          team_id: enrollment.device.team_id,
++          device_key: enrollment.credentials.device_token,
++          hmac_secret: enrollment.credentials.hmac_secret
++        }
++      });
++      rebindRequired = false;
++      if (loggingOut || syncContextChanged(token, teamSelection)) {
++        await invoke('pause_sync');
++        return;
++      }
++      lastNativeTriggerAt = Date.now();
++      setSyncState('connecting', copy('正在执行首次后台同步。',
++        'The first background sync is running.'));
++      window.setTimeout(function () { ensureDesktopSync(true); }, 1800);
++    } catch (error) {
++      if (!token) {
++        syncClearPending = true;
++        setSyncState('hidden');
++      } else {
++        if (error && (error.code === 'device_team_change_forbidden' ||
++            error.code === 'device_employee_change_forbidden')) {
++          rebindRequired = true;
++        }
++        setSyncState('error', syncErrorDetail(error));
++      }
++    } finally {
++      syncRunning = false;
++      if (syncRerunRequested && !loggingOut) {
++        syncRerunRequested = false;
++        window.setTimeout(function () { ensureDesktopSync(true); }, 0);
++      }
++    }
++  }
++
++  async function desktopGoogleLogin(button) {
++    if (button.dataset.desktopBusy === '1') return;
++    var original = button.innerHTML;
++    button.dataset.desktopBusy = '1';
++    button.disabled = true;
++    button.textContent = copy('请在浏览器完成 Google 登录…', 'Finish signing in with Google in your browser…');
++    try {
++      var started = await apiRequest('/auth/google/start?client=desktop');
++      var authorizationUrl = new URL(started.authorization_url);
++      if (authorizationUrl.protocol !== 'https:' || authorizationUrl.hostname !== 'accounts.google.com') {
++        throw new Error('Untrusted Google authorization URL');
++      }
++      await invoke('open_external', { url: authorizationUrl.toString() });
++      var deadline = Date.now() + Math.max(30, Math.min(Number(started.expires_in) || 600, 600)) * 1000;
++      while (Date.now() < deadline) {
++        var authStatus;
++        try {
++          authStatus = await apiRequest('/auth/google/status', {
++            method: 'POST',
++            body: JSON.stringify({ poll_token: started.poll_token })
++          });
++        } catch (pollError) {
++          if (pollError && pollError.status && pollError.status < 500) throw pollError;
++          await new Promise(function (resolve) { window.setTimeout(resolve, 2000); });
++          continue;
++        }
++        if (authStatus.status === 'ready') {
++          var completed = await apiRequest('/auth/google/complete', {
++            method: 'POST',
++            body: JSON.stringify({ poll_token: started.poll_token })
++          });
++          window.localStorage.setItem('my_day_session_token', completed.token);
++          window.localStorage.setItem('usage_admin_token', completed.token);
++          window.location.reload();
++          return;
++        }
++        await new Promise(function (resolve) { window.setTimeout(resolve, 1500); });
++      }
++      throw new Error(copy('Google 登录等待超时，请重试。', 'Google sign-in timed out. Try again.'));
++    } catch (error) {
++      var message = syncErrorDetail(error);
++      var gateError = document.getElementById('gateErr');
++      if (gateError) {
++        gateError.textContent = message;
++        gateError.style.display = '';
++      }
++      button.innerHTML = original;
++      button.disabled = false;
++      button.dataset.desktopBusy = '0';
++    }
++  }
++
++  function trustedHttpsUrl(value) {
++    var parsed = new URL(String(value || ''));
++    if (parsed.protocol !== 'https:' || !parsed.hostname) {
++      throw new Error(copy('服务器返回了不安全的外部链接。', 'The server returned an unsafe external link.'));
++    }
++    return parsed.toString();
++  }
++
++  async function desktopLogout(button) {
++    if (button.dataset.desktopBusy === '1') return;
++    loggingOut = true;
++    var logoutToken = sessionToken();
++    var original = button.textContent;
++    button.dataset.desktopBusy = '1';
++    button.disabled = true;
++    button.textContent = copy('正在安全退出…', 'Signing out safely…');
++    TOKEN_KEYS.forEach(function (key) { window.localStorage.removeItem(key); });
++    try {
++      await invoke('clear_sync');
++    } catch (error) {
++      button.disabled = false;
++      button.dataset.desktopBusy = '0';
++      button.textContent = original;
++      button.title = copy('无法停止旧账号同步，请重试：', 'Unable to stop the previous sync. Retry: ') +
++        syncErrorDetail(error);
++      if (logoutToken) {
++        window.localStorage.setItem('my_day_session_token', logoutToken);
++        window.localStorage.setItem('usage_admin_token', logoutToken);
++      }
++      loggingOut = false;
++      return;
++    }
++    try {
++      await apiRequest('/auth/logout', { method: 'POST' }, logoutToken);
++    } catch (_error) {}
++    var waitDeadline = Date.now() + 5000;
++    while (syncRunning && Date.now() < waitDeadline) {
++      await new Promise(function (resolve) { window.setTimeout(resolve, 50); });
++    }
++    try {
++      await invoke('clear_sync');
++    } catch (error) {
++      if (logoutToken) {
++        window.localStorage.setItem('my_day_session_token', logoutToken);
++        window.localStorage.setItem('usage_admin_token', logoutToken);
++      }
++      button.disabled = false;
++      button.dataset.desktopBusy = '0';
++      button.textContent = original;
++      button.title = copy('无法完成安全退出，请重试：', 'Unable to finish signing out safely. Retry: ') +
++        syncErrorDetail(error);
++      loggingOut = false;
++      return;
++    }
++    lastSessionToken = '';
++    lastTeamSelection = '';
++    window.location.reload();
++  }
++
++  async function desktopCalendarConnect(button) {
++    if (button.dataset.desktopBusy === '1') return;
++    var original = button.textContent;
++    button.dataset.desktopBusy = '1';
++    button.disabled = true;
++    button.textContent = copy('正在浏览器打开授权…', 'Opening authorization in your browser…');
++    try {
++      var baseline = await apiRequest('/me/calendar');
++      var baselineSignature = JSON.stringify((baseline.connections || []).map(function (connection) {
++        return [connection.id, connection.status, connection.last_sync_at, connection.connected_at];
++      }));
++      var connectionId = Number(button.dataset.connectionId || 0);
++      var suffix = connectionId ? '?connection_id=' + encodeURIComponent(connectionId) : '';
++      var response = await apiRequest('/integrations/cronofy/start' + suffix);
++      await invoke('open_external', { url: trustedHttpsUrl(response.authorization_url) });
++      button.textContent = copy('等待浏览器授权完成…', 'Waiting for browser authorization…');
++      var deadline = Date.now() + Math.max(60, Math.min(Number(response.expires_in) || 600, 600)) * 1000;
++      while (Date.now() < deadline && sessionToken()) {
++        await new Promise(function (resolve) { window.setTimeout(resolve, 2500); });
++        var current = await apiRequest('/me/calendar').catch(function () { return null; });
++        if (!current) continue;
++        var signature = JSON.stringify((current.connections || []).map(function (connection) {
++          return [connection.id, connection.status, connection.last_sync_at, connection.connected_at];
++        }));
++        if (signature !== baselineSignature) {
++          window.location.reload();
++          return;
++        }
++      }
++      button.disabled = false;
++      button.dataset.desktopBusy = '0';
++      button.textContent = original;
++    } catch (error) {
++      button.disabled = false;
++      button.dataset.desktopBusy = '0';
++      button.textContent = original;
++      button.title = syncErrorDetail(error);
++    }
++  }
++
++  async function desktopTelegramBind(button) {
++    if (button.dataset.desktopBusy === '1') return;
++    var original = button.textContent;
++    button.dataset.desktopBusy = '1';
++    button.disabled = true;
++    try {
++      var result = await apiRequest('/employee/telegram/bind-link', { method: 'POST' });
++      await invoke('open_external', { url: trustedHttpsUrl(result.url) });
++      var userDrop = document.getElementById('userDrop');
++      if (userDrop) userDrop.classList.remove('open');
++      button.textContent = copy('已在浏览器打开 Telegram', 'Telegram opened in your browser');
++    } catch (error) {
++      button.title = syncErrorDetail(error);
++      button.textContent = original;
++    } finally {
++      window.setTimeout(function () {
++        button.disabled = false;
++        button.dataset.desktopBusy = '0';
++        button.textContent = original;
++      }, 3000);
++    }
++  }
++
++  async function desktopGoogleSignup(button) {
++    if (button.dataset.desktopBusy === '1') return;
++    var invite = new URL(window.location.href).searchParams.get('t') || '';
++    if (!invite) return;
++    var original = button.textContent;
++    button.dataset.desktopBusy = '1';
++    button.disabled = true;
++    button.textContent = copy('请在浏览器完成 Google 注册…', 'Finish Google signup in your browser…');
++    try {
++      var started = await apiRequest('/auth/google/start?invite_token=' + encodeURIComponent(invite));
++      await invoke('open_external', { url: trustedHttpsUrl(started.authorization_url) });
++      var errorBox = document.getElementById('jErr');
++      if (errorBox) {
++        errorBox.textContent = copy('请在浏览器完成注册，然后返回 SeeSeeYou 登录。',
++          'Finish signup in the browser, then return to SeeSeeYou and sign in.');
++        errorBox.style.display = '';
++      }
++      window.setTimeout(function () {
++        button.textContent = original;
++        button.disabled = false;
++        button.dataset.desktopBusy = '0';
++      }, 10000);
++    } catch (error) {
++      button.textContent = original;
++      button.disabled = false;
++      button.dataset.desktopBusy = '0';
++      button.title = syncErrorDetail(error);
++    }
++  }
++
++  async function ensureAutostartControl() {
++    var menu = document.getElementById('userDrop');
++    var logout = document.getElementById('logout');
++    if (!menu || !logout || document.getElementById('seeseeyouAutostart')) return;
++    var button = document.createElement('button');
++    button.type = 'button';
++    button.id = 'seeseeyouAutostart';
++    logout.parentNode.insertBefore(button, logout);
++    async function refresh() {
++      try {
++        var enabled = await invoke('get_autostart_enabled');
++        button.dataset.enabled = enabled ? '1' : '0';
++        button.textContent = enabled
++          ? copy('✓ 开机自动启动', '✓ Start automatically')
++          : copy('开机自动启动', 'Start automatically');
++      } catch (_error) {
++        button.hidden = true;
++      }
++    }
++    button.addEventListener('click', async function (event) {
++      event.stopImmediatePropagation();
++      button.disabled = true;
++      try {
++        await invoke('set_autostart_enabled', { enabled: button.dataset.enabled !== '1' });
++        await refresh();
++      } finally {
++        button.disabled = false;
++      }
++    }, true);
++    await refresh();
++  }
++
++  document.addEventListener('click', function (event) {
++    var logoutButton = event.target && event.target.closest
++      ? event.target.closest('#logout')
++      : null;
++    if (logoutButton) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      desktopLogout(logoutButton);
++      return;
++    }
++
++    var googleButton = event.target && event.target.closest
++      ? event.target.closest('#googleLogin')
++      : null;
++    if (googleButton) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      desktopGoogleLogin(googleButton);
++      return;
++    }
++
++    var googleSignupButton = event.target && event.target.closest
++      ? event.target.closest('#googleJoin')
++      : null;
++    if (googleSignupButton) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      desktopGoogleSignup(googleSignupButton);
++      return;
++    }
++
++    var calendarButton = event.target && event.target.closest
++      ? event.target.closest('[data-calendar-action="connect"],[data-calendar-action="reconnect"]')
++      : null;
++    if (calendarButton) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      desktopCalendarConnect(calendarButton);
++      return;
++    }
++
++    var telegramButton = event.target && event.target.closest
++      ? event.target.closest('#telegramBindLink')
++      : null;
++    if (telegramButton) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      desktopTelegramBind(telegramButton);
++      return;
++    }
++
++    var consoleButton = event.target && event.target.closest
++      ? event.target.closest('#consoleLink')
++      : null;
++    if (consoleButton) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      invoke('open_external', { url: TRUSTED_ORIGIN + '/admin/#people' }).catch(function () {});
++      var consoleMenu = document.getElementById('userDrop');
++      if (consoleMenu) consoleMenu.classList.remove('open');
++      return;
++    }
++
++    var teamChoice = event.target && event.target.closest
++      ? event.target.closest('[data-team-menu],[data-team-switch]')
++      : null;
++    if (teamChoice) {
++      window.setTimeout(function () { ensureDesktopSync(true); }, 250);
++    }
++
++    var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
++    if (!link) return;
++    var target = new URL(link.href, window.location.href);
++    var internal = target.origin === window.location.origin ||
++      target.protocol === 'tauri:' || target.protocol === 'about:';
++    if (!internal) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      invoke('open_external', { url: target.href }).catch(function () {});
++    }
++  }, true);
++
++  document.addEventListener('DOMContentLoaded', function () {
++    brandDesktopWorkspace();
++    ensureSyncBadge();
++    ensureAutostartControl();
++    ensureDesktopSync(true);
++  });
++  window.addEventListener('storage', function (event) {
++    if (TOKEN_KEYS.indexOf(event.key) >= 0 || event.key === TEAM_KEY) ensureDesktopSync(true);
++  });
++  window.addEventListener('work-i18n-change', function () {
++    ensureDesktopSync(true);
++  });
++  window.setInterval(function () {
++    ensureDesktopSync(false);
++  }, 5000);
++
++  if (window.__SEESEEYOU_BRIDGE_TEST_MODE__) {
++    window.__SEESEEYOU_BRIDGE_TEST__ = {
++      ensureDesktopSync: ensureDesktopSync,
++      desktopLogout: desktopLogout,
++      rebindDesktopSync: rebindDesktopSync,
++      selectedTeam: selectedTeam,
++      trustedHttpsUrl: trustedHttpsUrl
++    };
++  }
++}());
 diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
-index b5b9ab8..d6e4379 100644
+index b5b9ab8..7073d76 100644
 --- a/src-tauri/tauri.conf.json
 +++ b/src-tauri/tauri.conf.json
-@@ -1,8 +1,8 @@
- {
-   "$schema": "https://schema.tauri.app/config/2",
+@@ -3,3 +3,3 @@
 -  "productName": "aw-tauri",
 -  "version": "0.1.0",
 -  "identifier": "net.activitywatch.tauri",
 +  "productName": "SeeSeeYou",
-+  "version": "0.1.2",
++  "version": "0.1.3",
 +  "identifier": "com.seeseeyou.desktop",
-   "app": {
-     "windows": [],
-     "security": {
-@@ -24,7 +24,7 @@
-     "updater": {
-       "pubkey": "",
-       "endpoints": [
+@@ -27 +27 @@
 -        "https://github.com/ActivityWatch/activitywatch/releases/latest/download/latest.json"
 +        "https://github.com/shuaizhangbook/seeseeyou/releases/latest/download/latest.json"
-       ],
-       "dialog": false
-     }

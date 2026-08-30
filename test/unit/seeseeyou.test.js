@@ -8,10 +8,10 @@ import {
   startGoogleDesktopAuth,
 } from '~/util/seeseeyou';
 
-function jsonResponse(body, ok = true, status = 200) {
+function jsonResponse(body, ok = true, responseStatus = 200) {
   return {
     ok,
-    status,
+    status: responseStatus,
     headers: { get: () => 'application/json' },
     json: async () => body,
   };
@@ -41,14 +41,14 @@ describe('SeeSeeYou desktop Google authentication', () => {
       .mockResolvedValueOnce(jsonResponse({ ok: true, status: 'pending' }, true, 202));
 
     const started = await startGoogleDesktopAuth();
-    const status = await getGoogleDesktopAuthStatus(started.poll_token);
+    const authStatus = await getGoogleDesktopAuthStatus(started.poll_token);
 
     expect(fetch.mock.calls[0][0]).toMatch(/\/auth\/google\/start\?client=desktop$/);
     expect(fetch.mock.calls[1][0]).toMatch(/\/auth\/google\/status$/);
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
       poll_token: 'desktop-poll-token-value',
     });
-    expect(status).toEqual({ ok: true, status: 'pending' });
+    expect(authStatus).toEqual({ ok: true, status: 'pending' });
   });
 
   test('completes the one-time flow and stores the returned session', async () => {
@@ -66,9 +66,7 @@ describe('SeeSeeYou desktop Google authentication', () => {
     const invoke = jest.fn().mockResolvedValue(undefined);
     window.__TAURI_INTERNALS__ = { invoke };
 
-    await openGoogleAuthorizationUrl(
-      'https://accounts.google.com/o/oauth2/v2/auth?state=one-time'
-    );
+    await openGoogleAuthorizationUrl('https://accounts.google.com/o/oauth2/v2/auth?state=one-time');
 
     expect(invoke).toHaveBeenCalledWith('open_external', {
       url: 'https://accounts.google.com/o/oauth2/v2/auth?state=one-time',

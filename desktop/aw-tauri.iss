@@ -5,7 +5,7 @@
 ; and display name.
 
 #define MyAppName "SeeSeeYou"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.3"
 #define MyAppPublisher "SeeSeeYou"
 #define MyAppURL "https://watch.sding.me/"
 #define MyAppExeName "aw-tauri.exe"
@@ -22,8 +22,8 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-AppSupportURL="https://github.com/shuaizhangbook/seeseeyou/issues"
-AppUpdatesURL="https://github.com/shuaizhangbook/seeseeyou/releases"
+AppSupportURL="https://github.com/shuaizhangbook/aw-webui/issues"
+AppUpdatesURL="https://github.com/shuaizhangbook/aw-webui/releases"
 DefaultDirName={autopf}\SeeSeeYou
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -39,19 +39,24 @@ WizardStyle=modern
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "StartMenuEntry" ; Description: "Start SeeSeeYou when Windows starts"; GroupDescription: "Windows Startup"; MinVersion: 4,4;
 
 [Files]
-Source: "{#DistDir}\activitywatch\aw-tauri.exe"; DestDir: "{app}\aw-tauri"; Flags: ignoreversion
 Source: "{#DistDir}\activitywatch\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: StartMenuEntry;
+
+[InstallDelete]
+Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
+Type: files; Name: "{app}\aw-tauri\aw-tauri.exe"
+
+[UninstallDelete]
+Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
