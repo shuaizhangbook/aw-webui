@@ -53,6 +53,8 @@ jobs:
           git -C activitywatch/aw-tauri apply --unidiff-zero \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
           cp custom-webui/desktop/aw-tauri.iss activitywatch/scripts/package/aw-tauri.iss
+          cp custom-webui/desktop/inno/ChineseSimplified.isl \
+            activitywatch/scripts/package/ChineseSimplified.isl
 
       - name: Verify the desktop port migration contract
         run: |
