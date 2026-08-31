@@ -71,8 +71,8 @@ jobs:
           grep -F 'commands.allow = ["resume_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
           grep -F 'commands.allow = ["clear_sync"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
           grep -F 'commands.allow = ["trigger_sync_now"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
-          grep -F '"https://watch.sding.me/admin/my-day"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
-          grep -F '"https://watch.sding.me/admin/my-day/*"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"https://watch.sding.me"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
+          grep -F '"https://watch.sding.me/*"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
           grep -F '"local": false' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
           grep -F '"allow-get-sync-status"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
           grep -F '"allow-configure-sync"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-remote.json
@@ -86,7 +86,7 @@ jobs:
           grep -F '"seeseeyou-remote"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
           grep -F 'SEESEEYOU_WORKSPACE_URL' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'include_str!("seeseeyou_bridge.js")' activitywatch/aw-tauri/src-tauri/src/lib.rs
-          grep -F '"version": "0.1.5"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
+          grep -F '"version": "0.1.6"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -169,8 +169,8 @@ jobs:
           capabilities = json.loads((schema_dir / 'capabilities.json').read_text(encoding='utf-8'))
           remote = capabilities.get('seeseeyou-remote')
           assert remote, 'seeseeyou-remote capability was not compiled'
-          assert 'https://watch.sding.me/admin/my-day' in remote['remote']['urls']
-          assert 'https://watch.sding.me/admin/my-day/*' in remote['remote']['urls']
+          assert 'https://watch.sding.me' in remote['remote']['urls']
+          assert 'https://watch.sding.me/*' in remote['remote']['urls']
           assert 'allow-get-sync-status' in remote['permissions']
           assert 'allow-open-external' in remote['permissions']
 
@@ -223,13 +223,13 @@ jobs:
           bash scripts/package/package-all.sh
           setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
           zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
-          mv "$setup_file" dist/SeeSeeYou-0.1.5-windows-x86_64-setup.exe
+          mv "$setup_file" dist/SeeSeeYou-0.1.6-windows-x86_64-setup.exe
           rm -f "$zip_file"
           portable_stage=$(mktemp -d)
           mkdir -p "$portable_stage/SeeSeeYou"
           cp -R dist/activitywatch/. "$portable_stage/SeeSeeYou/"
           (cd "$portable_stage" && 7z a -tzip -mx=9 \
-            "$GITHUB_WORKSPACE/activitywatch/dist/SeeSeeYou-0.1.5-windows-x86_64-portable.zip" \
+            "$GITHUB_WORKSPACE/activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-portable.zip" \
             SeeSeeYou)
 
       - name: Show generated packages
@@ -239,26 +239,26 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: SeeSeeYou-0.1.5-Windows
+          name: SeeSeeYou-0.1.6-Windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/SeeSeeYou-0.1.5-windows-x86_64-setup.exe
-            activitywatch/dist/SeeSeeYou-0.1.5-windows-x86_64-portable.zip
+            activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-setup.exe
+            activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-portable.zip
 
-      - name: Publish the SeeSeeYou v0.1.5 release
+      - name: Publish the SeeSeeYou v0.1.6 release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          setup_file=activitywatch/dist/SeeSeeYou-0.1.5-windows-x86_64-setup.exe
-          portable_file=activitywatch/dist/SeeSeeYou-0.1.5-windows-x86_64-portable.zip
-          if gh release view v0.1.5 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload v0.1.5 "$setup_file" "$portable_file" \
+          setup_file=activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-setup.exe
+          portable_file=activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-portable.zip
+          if gh release view v0.1.6 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v0.1.6 "$setup_file" "$portable_file" \
               --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create v0.1.5 "$setup_file" "$portable_file" \
+            gh release create v0.1.6 "$setup_file" "$portable_file" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "SeeSeeYou 0.1.5" \
+              --title "SeeSeeYou 0.1.6" \
               --notes "完整 My Day 工作台、Google 登录、5600 本机采集、真实同步状态与安全账号/团队重新绑定。 Full My Day workspace, Google sign-in, local collection on port 5600, real sync health, and safe account/team rebinding."
           fi
