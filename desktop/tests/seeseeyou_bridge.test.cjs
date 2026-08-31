@@ -152,6 +152,173 @@ test('retry on a real worker error triggers the native scheduler', async () => {
   assert.ok(calls.includes('trigger_sync_now'));
 });
 
+test('recent server activity stays healthy when only the native status check fails', async () => {
+  const harness = loadBridge({
+    initialStorage: {
+      my_day_session_token: 'token',
+      my_day_selected_team_id: 'team-a',
+      seeseeyou_desktop_device_id: 'device-a',
+    },
+    invoke: async command => {
+      if (command === 'get_sync_status') throw 'IPC channel closed: get_sync_status';
+      return null;
+    },
+    fetch: async url => {
+      if (url.endsWith('/me/teams')) {
+        return response({
+          employee_id: 'employee-a',
+          items: [{ team_id: 'team-a', name: 'Team A' }],
+          devices: [{
+            device_id: 'device-a',
+            team_id: 'team-a',
+            last_seen: '2026-08-31T09:29:00Z',
+          }],
+          desktop: {
+            server_time: '2026-08-31T09:30:00Z',
+            bridge_protocol: 2,
+            minimum_version: '0.1.4',
+            online_window_seconds: 900,
+          },
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  await harness.bridge.ensureDesktopSync(true);
+  const view = harness.bridge.getSyncViewState();
+  assert.equal(view.state, 'active');
+  assert.match(view.detail, /IPC channel closed: get_sync_status/);
+});
+
+test('native status failure is diagnostic and preserves a raw string error', async () => {
+  const harness = loadBridge({
+    initialStorage: {
+      my_day_session_token: 'token',
+      my_day_selected_team_id: 'team-a',
+    },
+    invoke: async command => {
+      if (command === 'get_sync_status') throw 'command get_sync_status not found';
+      return null;
+    },
+    fetch: async url => {
+      if (url.endsWith('/me/teams')) {
+        return response({
+          employee_id: 'employee-a',
+          items: [{ team_id: 'team-a', name: 'Team A' }],
+          devices: [],
+          desktop: {
+            server_time: '2026-08-31T09:30:00Z',
+            bridge_protocol: 2,
+            minimum_version: '0.1.4',
+            online_window_seconds: 900,
+          },
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  await harness.bridge.ensureDesktopSync(true);
+  const view = harness.bridge.getSyncViewState();
+  assert.equal(view.state, 'diagnostic');
+  assert.match(view.detail, /command get_sync_status not found/);
+  assert.equal(harness.bridge.rawErrorMessage('native raw failure'), 'native raw failure');
+});
+
+test('web and desktop bridge protocol mismatch is detected', async () => {
+  const harness = loadBridge({
+    initialStorage: {
+      my_day_session_token: 'token',
+      my_day_selected_team_id: 'team-a',
+    },
+    invoke: async command => {
+      if (command === 'get_sync_status') {
+        return {
+          desktop_version: '0.1.3',
+          bridge_protocol: 1,
+          configured: true,
+          paused: false,
+          employee_id: 'employee-a',
+          team_id: 'team-a',
+        };
+      }
+      return null;
+    },
+    fetch: async url => {
+      if (url.endsWith('/me/teams')) {
+        return response({
+          employee_id: 'employee-a',
+          items: [{ team_id: 'team-a', name: 'Team A' }],
+          devices: [],
+          desktop: {
+            server_time: '2026-08-31T09:30:00Z',
+            bridge_protocol: 2,
+            minimum_version: '0.1.4',
+            online_window_seconds: 900,
+          },
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  await harness.bridge.ensureDesktopSync(true);
+  const view = harness.bridge.getSyncViewState();
+  assert.equal(view.state, 'version');
+  assert.match(view.detail, /协议不一致|protocol mismatch/);
+});
+
+test('recent server activity overrides a stale native worker error', async () => {
+  const calls = [];
+  const harness = loadBridge({
+    initialStorage: {
+      my_day_session_token: 'token',
+      my_day_selected_team_id: 'team-a',
+    },
+    invoke: async command => {
+      calls.push(command);
+      if (command === 'get_sync_status') {
+        return {
+          desktop_version: '0.1.4',
+          bridge_protocol: 2,
+          configured: true,
+          paused: false,
+          employee_id: 'employee-a',
+          team_id: 'team-a',
+          device_id: 'device-a',
+          last_error: 'old timeout that already recovered',
+        };
+      }
+      return null;
+    },
+    fetch: async url => {
+      if (url.endsWith('/me/teams')) {
+        return response({
+          employee_id: 'employee-a',
+          items: [{ team_id: 'team-a', name: 'Team A' }],
+          devices: [{
+            device_id: 'device-a',
+            team_id: 'team-a',
+            last_seen: '2026-08-31T09:29:30Z',
+          }],
+          desktop: {
+            server_time: '2026-08-31T09:30:00Z',
+            bridge_protocol: 2,
+            minimum_version: '0.1.4',
+            online_window_seconds: 900,
+          },
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  await harness.bridge.ensureDesktopSync(true);
+  assert.equal(harness.bridge.getSyncViewState().state, 'active');
+  assert.equal(calls.includes('trigger_sync_now'), false);
+});
+
 test('explicit rebind clears the stale identity before rotating and enrolling', async () => {
   const calls = [];
   let configured = true;
