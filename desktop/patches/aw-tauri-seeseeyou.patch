@@ -1310,10 +1310,10 @@ index 56a1e71..7047205 100644
 +
 diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
 new file mode 100644
-index 0000000..80abea8
+index 0000000..8b34900
 --- /dev/null
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -0,0 +1,918 @@
+@@ -0,0 +1,889 @@
 +(function () {
 +  'use strict';
 +
@@ -1561,44 +1561,28 @@ index 0000000..80abea8
 +    return 0;
 +  }
 +
-+  function desktopVersionIssue(status, desktopContract) {
-+    if (!status || !desktopContract) return '';
++  function desktopVersionIssue(status) {
++    if (!status) return '';
 +    var actualProtocol = Number(status.bridge_protocol);
-+    var expectedProtocol = Number(desktopContract.bridge_protocol);
-+    if (Number.isFinite(expectedProtocol) && actualProtocol !== expectedProtocol) {
-+      return copy('桌面通信协议不一致。服务器要求 ', 'Desktop bridge protocol mismatch. Server requires ') +
-+        expectedProtocol + copy('，当前为 ', ', current is ') +
++    if (actualProtocol !== BRIDGE_PROTOCOL) {
++      return copy('Web 与桌面通信协议不一致。Web 需要 ', 'Web and desktop bridge protocol mismatch. Web requires ') +
++        BRIDGE_PROTOCOL + copy('，桌面程序为 ', ', desktop is ') +
 +        (Number.isFinite(actualProtocol) ? actualProtocol : copy('未知', 'unknown')) + '。';
 +    }
-+    var minimumVersion = String(desktopContract.minimum_version || '');
 +    var actualVersion = String(status.desktop_version || '');
-+    if (minimumVersion && (!actualVersion || compareVersions(actualVersion, minimumVersion) < 0)) {
-+      return copy('桌面程序版本不一致。最低需要 ', 'Desktop version mismatch. Minimum required is ') +
-+        minimumVersion + copy('，当前为 ', ', current is ') +
++    if (!actualVersion || compareVersions(actualVersion, DESKTOP_VERSION) !== 0) {
++      return copy('Web 与桌面程序版本不一致。Web 为 ', 'Web and desktop versions do not match. Web is ') +
++        DESKTOP_VERSION + copy('，桌面程序为 ', ', desktop is ') +
 +        (actualVersion || copy('未知', 'unknown')) + '。';
 +    }
 +    return '';
 +  }
 +
-+  function serverSyncHealth(teamData, deviceId) {
-+    var devices = Array.isArray(teamData && teamData.devices) ? teamData.devices : [];
-+    var selected = deviceId
-+      ? devices.find(function (device) { return String(device.device_id || '') === deviceId; })
-+      : devices.length === 1 ? devices[0] : null;
-+    if (!selected || !selected.last_seen) return null;
-+    var contract = teamData.desktop || {};
-+    var serverTime = Date.parse(contract.server_time || '');
-+    if (!Number.isFinite(serverTime)) serverTime = Date.now();
-+    var lastSeen = Date.parse(selected.last_seen);
-+    if (!Number.isFinite(lastSeen)) return null;
-+    var onlineWindow = Number(contract.online_window_seconds);
-+    if (!Number.isFinite(onlineWindow) || onlineWindow <= 0) onlineWindow = 900;
-+    var ageMs = serverTime - lastSeen;
-+    return {
-+      device: selected,
-+      recent: ageMs >= -60000 && ageMs <= onlineWindow * 1000,
-+      ageSeconds: Math.max(0, Math.round(ageMs / 1000))
-+    };
++  function recentSuccessfulUpload(status) {
++    var lastSuccess = Number(status && status.last_success_at_ms);
++    if (!Number.isFinite(lastSuccess) || lastSuccess <= 0) return false;
++    var ageMs = Date.now() - lastSuccess;
++    return ageMs >= -60000 && ageMs <= 15 * 60 * 1000;
 +  }
 +
 +  function syncErrorDetail(error) {
@@ -1712,19 +1696,11 @@ index 0000000..80abea8
 +        return;
 +      }
 +
-+      var rememberedDeviceId = status && status.device_id
-+        ? String(status.device_id)
-+        : String(window.localStorage.getItem(DEVICE_KEY) || '');
-+      var serverHealth = serverSyncHealth(teamData, rememberedDeviceId);
-+      var versionIssue = desktopVersionIssue(status, teamData.desktop || null);
-+      if (serverHealth && serverHealth.recent) {
-+        var healthyDetail = copy('服务器最近持续收到这台电脑的数据，最后更新于 ',
-+          'The server is receiving data from this computer. Last update: ') +
-+          String(serverHealth.device.last_seen) + '。';
-+        if (nativeStatusError) {
-+          healthyDetail += ' ' + copy('本机状态查询同时返回：', 'The local status check also returned: ') +
-+            rawErrorMessage(nativeStatusError);
-+        }
++      var versionIssue = desktopVersionIssue(status);
++      if (recentSuccessfulUpload(status)) {
++        var healthyDetail = copy('最近一次上传已被线上服务接受：',
++          'The latest upload was accepted by the online service: ') +
++          new Date(Number(status.last_success_at_ms)).toLocaleString() + '。';
 +        if (versionIssue) healthyDetail += ' ' + versionIssue;
 +        setSyncState('active', healthyDetail, versionIssue
 +          ? copy('● 同步正常 · 版本待更新', '● Sync healthy · Update available')
@@ -1791,11 +1767,6 @@ index 0000000..80abea8
 +          }
 +          throw new Error(copy('最近一次后台同步未成功：', 'The latest background sync failed: ') +
 +            String(status.last_error));
-+        }
-+        if (serverHealth && !serverHealth.recent) {
-+          throw new Error(copy('线上数据已超过健康窗口，最后更新时间：',
-+            'Online data is older than the healthy window. Last update: ') +
-+            String(serverHealth.device.last_seen));
 +        }
 +        if (status.running || !status.last_success_at_ms) {
 +          if (!status.running && Date.now() - lastNativeTriggerAt > 10000) {
@@ -2225,7 +2196,7 @@ index 0000000..80abea8
 +      trustedHttpsUrl: trustedHttpsUrl,
 +      rawErrorMessage: rawErrorMessage,
 +      desktopVersionIssue: desktopVersionIssue,
-+      serverSyncHealth: serverSyncHealth,
++      recentSuccessfulUpload: recentSuccessfulUpload,
 +      getSyncViewState: function () {
 +        return { state: currentSyncState, detail: currentSyncDetail };
 +      }

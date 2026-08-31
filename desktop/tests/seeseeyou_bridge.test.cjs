@@ -27,9 +27,20 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
     getElementById() { return null; },
     createElement() { return {}; },
   };
+  const versionedInvoke = async (command, args) => {
+    const value = await invoke(command, args);
+    if (command === 'get_sync_status' && value && typeof value === 'object') {
+      return {
+        desktop_version: '0.1.4',
+        bridge_protocol: 2,
+        ...value,
+      };
+    }
+    return value;
+  };
   const window = {
     __SEESEEYOU_BRIDGE_TEST_MODE__: true,
-    __TAURI_INTERNALS__: { invoke },
+    __TAURI_INTERNALS__: { invoke: versionedInvoke },
     location: {
       origin: 'https://watch.sding.me',
       href: 'https://watch.sding.me/admin/my-day/?desktop=1',
@@ -152,34 +163,30 @@ test('retry on a real worker error triggers the native scheduler', async () => {
   assert.ok(calls.includes('trigger_sync_now'));
 });
 
-test('recent server activity stays healthy when only the native status check fails', async () => {
+test('recent server-acknowledged upload stays healthy despite a stale worker error', async () => {
+  const now = Date.now();
   const harness = loadBridge({
     initialStorage: {
       my_day_session_token: 'token',
       my_day_selected_team_id: 'team-a',
-      seeseeyou_desktop_device_id: 'device-a',
     },
     invoke: async command => {
-      if (command === 'get_sync_status') throw 'IPC channel closed: get_sync_status';
+      if (command === 'get_sync_status') {
+        return {
+          configured: true,
+          paused: false,
+          employee_id: 'employee-a',
+          team_id: 'team-a',
+          device_id: 'device-a',
+          last_success_at_ms: now - 30000,
+          last_error: 'an older timeout',
+        };
+      }
       return null;
     },
     fetch: async url => {
       if (url.endsWith('/me/teams')) {
-        return response({
-          employee_id: 'employee-a',
-          items: [{ team_id: 'team-a', name: 'Team A' }],
-          devices: [{
-            device_id: 'device-a',
-            team_id: 'team-a',
-            last_seen: '2026-08-31T09:29:00Z',
-          }],
-          desktop: {
-            server_time: '2026-08-31T09:30:00Z',
-            bridge_protocol: 2,
-            minimum_version: '0.1.4',
-            online_window_seconds: 900,
-          },
-        });
+        return response({ employee_id: 'employee-a', items: [{ team_id: 'team-a', name: 'Team A' }] });
       }
       throw new Error(`Unexpected URL: ${url}`);
     },
@@ -188,7 +195,7 @@ test('recent server activity stays healthy when only the native status check fai
   await harness.bridge.ensureDesktopSync(true);
   const view = harness.bridge.getSyncViewState();
   assert.equal(view.state, 'active');
-  assert.match(view.detail, /IPC channel closed: get_sync_status/);
+  assert.match(view.detail, /线上服务接受|accepted by the online service/);
 });
 
 test('native status failure is diagnostic and preserves a raw string error', async () => {
@@ -206,13 +213,6 @@ test('native status failure is diagnostic and preserves a raw string error', asy
         return response({
           employee_id: 'employee-a',
           items: [{ team_id: 'team-a', name: 'Team A' }],
-          devices: [],
-          desktop: {
-            server_time: '2026-08-31T09:30:00Z',
-            bridge_protocol: 2,
-            minimum_version: '0.1.4',
-            online_window_seconds: 900,
-          },
         });
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -250,13 +250,6 @@ test('web and desktop bridge protocol mismatch is detected', async () => {
         return response({
           employee_id: 'employee-a',
           items: [{ team_id: 'team-a', name: 'Team A' }],
-          devices: [],
-          desktop: {
-            server_time: '2026-08-31T09:30:00Z',
-            bridge_protocol: 2,
-            minimum_version: '0.1.4',
-            online_window_seconds: 900,
-          },
         });
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -271,6 +264,7 @@ test('web and desktop bridge protocol mismatch is detected', async () => {
 
 test('recent server activity overrides a stale native worker error', async () => {
   const calls = [];
+  const now = Date.now();
   const harness = loadBridge({
     initialStorage: {
       my_day_session_token: 'token',
@@ -287,6 +281,7 @@ test('recent server activity overrides a stale native worker error', async () =>
           employee_id: 'employee-a',
           team_id: 'team-a',
           device_id: 'device-a',
+          last_success_at_ms: now - 30000,
           last_error: 'old timeout that already recovered',
         };
       }
@@ -297,17 +292,6 @@ test('recent server activity overrides a stale native worker error', async () =>
         return response({
           employee_id: 'employee-a',
           items: [{ team_id: 'team-a', name: 'Team A' }],
-          devices: [{
-            device_id: 'device-a',
-            team_id: 'team-a',
-            last_seen: '2026-08-31T09:29:30Z',
-          }],
-          desktop: {
-            server_time: '2026-08-31T09:30:00Z',
-            bridge_protocol: 2,
-            minimum_version: '0.1.4',
-            online_window_seconds: 900,
-          },
         });
       }
       throw new Error(`Unexpected URL: ${url}`);
