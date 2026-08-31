@@ -19,6 +19,7 @@ function response(body, status = 200) {
 function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }) {
   const values = new Map(Object.entries(initialStorage));
   const listeners = new Map();
+  const alerts = [];
   let reloads = 0;
   const document = {
     documentElement: { lang: 'zh-CN' },
@@ -31,7 +32,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
     const value = await invoke(command, args);
     if (command === 'get_sync_status' && value && typeof value === 'object') {
       return {
-        desktop_version: '0.1.4',
+        desktop_version: '0.1.5',
         bridge_protocol: 2,
         ...value,
       };
@@ -53,6 +54,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
     },
     fetch,
     confirm,
+    alert(message) { alerts.push(String(message)); },
     addEventListener(name, listener) { listeners.set(name, listener); },
     setTimeout() { return 1; },
     setInterval() { return 1; },
@@ -70,6 +72,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
   return {
     bridge: window.__SEESEEYOU_BRIDGE_TEST__,
     storage: values,
+    alerts,
     get reloads() { return reloads; },
   };
 }
@@ -274,7 +277,7 @@ test('recent server activity overrides a stale native worker error', async () =>
       calls.push(command);
       if (command === 'get_sync_status') {
         return {
-          desktop_version: '0.1.4',
+          desktop_version: '0.1.5',
           bridge_protocol: 2,
           configured: true,
           paused: false,
@@ -388,6 +391,43 @@ test('server identity conflict offers rebind even when local sync config is gone
   assert.equal(enrollmentAttempts, 2);
 });
 
+test('Telegram daily-report binding opens the trusted link through the native bridge', async () => {
+  const calls = [];
+  const harness = loadBridge({
+    initialStorage: { my_day_session_token: 'token' },
+    invoke: async (command, args) => { calls.push([command, args]); },
+    fetch: async url => {
+      assert.ok(url.endsWith('/employee/telegram/bind-link'));
+      return response({ url: 'https://t.me/SeeSeeYouBot?start=desktop-token' });
+    },
+  });
+  const button = { dataset: {}, disabled: false, textContent: '连接 Telegram 日报提醒', title: '' };
+
+  await harness.bridge.desktopTelegramBind(button);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'open_external');
+  assert.equal(
+    calls[0][1].url,
+    'https://t.me/SeeSeeYouBot?start=desktop-token',
+  );
+  assert.equal(harness.alerts.length, 0);
+});
+
+test('Telegram ACL failures are shown instead of failing silently', async () => {
+  const harness = loadBridge({
+    initialStorage: { my_day_session_token: 'token' },
+    invoke: async command => {
+      if (command === 'open_external') throw 'Command open_external not allowed by ACL';
+    },
+    fetch: async () => response({ url: 'https://t.me/SeeSeeYouBot?start=desktop-token' }),
+  });
+  const button = { dataset: {}, disabled: false, textContent: '连接 Telegram 日报提醒', title: '' };
+
+  await harness.bridge.desktopTelegramBind(button);
+  assert.match(button.title, /not allowed by ACL/);
+  assert.match(harness.alerts[0], /not allowed by ACL/);
+});
+
 test('desktop logout clears synchronization credentials before removing the session', async () => {
   const calls = [];
   const harness = loadBridge({
@@ -432,4 +472,5 @@ test('desktop logout restores the session if the final native clear fails', asyn
   assert.equal(harness.storage.get('usage_admin_token'), 'token');
   assert.equal(harness.reloads, 0);
   assert.match(button.title, /无法完成安全退出/);
+  assert.match(harness.alerts[0], /locked/);
 });
