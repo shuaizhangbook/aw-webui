@@ -1,22 +1,13 @@
 diff --git a/src-tauri/Cargo.lock b/src-tauri/Cargo.lock
-index 9f93e2d..e79ecf3 100644
+index 9f93e2d..0a3e00d 100644
 --- a/src-tauri/Cargo.lock
 +++ b/src-tauri/Cargo.lock
-@@ -79,7 +79,7 @@ dependencies = [
- 
- [[package]]
- name = "android_system_properties"
--version = "0.1.5"
-+version = "0.1.6"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
- dependencies = [
 @@ -466,7 +466,7 @@ dependencies = [
  
  [[package]]
  name = "aw-tauri"
 -version = "0.1.0"
-+version = "0.1.5"
++version = "0.1.6"
  dependencies = [
   "aw-datastore",
   "aw-server",
