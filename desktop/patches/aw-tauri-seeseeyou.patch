@@ -1,7 +1,16 @@
 diff --git a/src-tauri/Cargo.lock b/src-tauri/Cargo.lock
-index 9f93e2d..874033f 100644
+index 9f93e2d..e79ecf3 100644
 --- a/src-tauri/Cargo.lock
 +++ b/src-tauri/Cargo.lock
+@@ -79,7 +79,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "android_system_properties"
+-version = "0.1.5"
++version = "0.1.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
+ dependencies = [
 @@ -466,7 +466,7 @@ dependencies = [
  
  [[package]]
@@ -12,14 +21,14 @@ index 9f93e2d..874033f 100644
   "aw-datastore",
   "aw-server",
 diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
-index d1da14d..7502217 100644
+index d1da14d..3133172 100644
 --- a/src-tauri/Cargo.toml
 +++ b/src-tauri/Cargo.toml
 @@ -1,6 +1,6 @@
  [package]
  name = "aw-tauri"
 -version = "0.1.0"
-+version = "0.1.5"
++version = "0.1.6"
  description = "ActivityWatch UI built with Tauri"
  authors = ["Erik Bjäreholt <erik@bjareho.lt>", "Brian Vuku <brayo@brayo.dev>"]
  license = "MPL-2.0"
@@ -75,7 +84,7 @@ index 0000000..31bba01
 +}
 diff --git a/src-tauri/capabilities/seeseeyou-remote.json b/src-tauri/capabilities/seeseeyou-remote.json
 new file mode 100644
-index 0000000..da6aa0b
+index 0000000..8379045
 --- /dev/null
 +++ b/src-tauri/capabilities/seeseeyou-remote.json
 @@ -0,0 +1,28 @@
@@ -89,8 +98,8 @@ index 0000000..da6aa0b
 +  "local": false,
 +  "remote": {
 +    "urls": [
-+      "https://watch.sding.me/admin/my-day",
-+      "https://watch.sding.me/admin/my-day/*"
++      "https://watch.sding.me",
++      "https://watch.sding.me/*"
 +    ]
 +  },
 +  "permissions": [
@@ -1500,16 +1509,16 @@ index 56a1e71..7047205 100644
  }
 diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
 new file mode 100644
-index 0000000..80d83a9
+index 0000000..97ff48c
 --- /dev/null
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -0,0 +1,897 @@
+@@ -0,0 +1,900 @@
 +(function () {
 +  'use strict';
 +
 +  var TRUSTED_ORIGIN = 'https://watch.sding.me';
 +  var API = TRUSTED_ORIGIN + '/api/v1';
-+  var DESKTOP_VERSION = '0.1.5';
++  var DESKTOP_VERSION = '0.1.6';
 +  var BRIDGE_PROTOCOL = 2;
 +  var TOKEN_KEYS = ['usage_admin_token', 'my_day_session_token'];
 +  var TEAM_KEY = 'my_day_selected_team_id';
@@ -1659,7 +1668,10 @@ index 0000000..80d83a9
 +      badge.style.background = '#f5faf8';
 +      badge.style.color = '#526965';
 +    } else if (state === 'diagnostic') {
-+      badge.textContent = label || copy('● 状态检测异常 · 重试', '● Status check issue · Retry');
++      badge.textContent = label || copy(
++        '● 状态检测异常 · v' + DESKTOP_VERSION + ' · 重试',
++        '● Status check issue · v' + DESKTOP_VERSION + ' · Retry'
++      );
 +      badge.style.borderColor = '#ecd9b4';
 +      badge.style.background = '#fdf5e8';
 +      badge.style.color = '#8b5d0a';
@@ -2402,7 +2414,7 @@ index 0000000..80d83a9
 +  }
 +}());
 diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
-index b5b9ab8..bd0df9e 100644
+index b5b9ab8..96416d8 100644
 --- a/src-tauri/tauri.conf.json
 +++ b/src-tauri/tauri.conf.json
 @@ -1,12 +1,19 @@
@@ -2412,7 +2424,7 @@ index b5b9ab8..bd0df9e 100644
 -  "version": "0.1.0",
 -  "identifier": "net.activitywatch.tauri",
 +  "productName": "SeeSeeYou",
-+  "version": "0.1.5",
++  "version": "0.1.6",
 +  "identifier": "com.seeseeyou.desktop",
    "app": {
      "windows": [],
