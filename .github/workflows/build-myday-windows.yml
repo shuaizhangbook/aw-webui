@@ -90,9 +90,10 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          lock = Path('activitywatch/aw-tauri/src-tauri/Cargo.lock').read_text(encoding='utf-8').replace('\\r\\n', '\\n')
-          assert 'name = "aw-tauri"\nversion = "0.1.6"' in lock
-          assert 'name = "android_system_properties"\nversion = "0.1.5"' in lock
+          lock = Path('activitywatch/aw-tauri/src-tauri/Cargo.lock').read_text(encoding='utf-8')
+          packages = lock.split('[[package]]')
+          assert any('name = "aw-tauri"' in package and 'version = "0.1.6"' in package for package in packages)
+          assert any('name = "android_system_properties"' in package and 'version = "0.1.5"' in package for package in packages)
           PY
 
       - name: Set up Python
