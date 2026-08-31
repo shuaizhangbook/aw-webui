@@ -83,7 +83,7 @@ jobs:
           grep -F '"allow-open-external"' activitywatch/aw-tauri/src-tauri/capabilities/seeseeyou-join.json
           grep -F 'SEESEEYOU_WORKSPACE_URL' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'include_str!("seeseeyou_bridge.js")' activitywatch/aw-tauri/src-tauri/src/lib.rs
-          grep -F '"version": "0.1.3"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
+          grep -F '"version": "0.1.4"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -199,13 +199,13 @@ jobs:
           bash scripts/package/package-all.sh
           setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
           zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
-          mv "$setup_file" dist/SeeSeeYou-0.1.3-windows-x86_64-setup.exe
+          mv "$setup_file" dist/SeeSeeYou-0.1.4-windows-x86_64-setup.exe
           rm -f "$zip_file"
           portable_stage=$(mktemp -d)
           mkdir -p "$portable_stage/SeeSeeYou"
           cp -R dist/activitywatch/. "$portable_stage/SeeSeeYou/"
           (cd "$portable_stage" && 7z a -tzip -mx=9 \
-            "$GITHUB_WORKSPACE/activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-portable.zip" \
+            "$GITHUB_WORKSPACE/activitywatch/dist/SeeSeeYou-0.1.4-windows-x86_64-portable.zip" \
             SeeSeeYou)
 
       - name: Show generated packages
@@ -215,26 +215,26 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: SeeSeeYou-0.1.3-Windows
+          name: SeeSeeYou-0.1.4-Windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-setup.exe
-            activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-portable.zip
+            activitywatch/dist/SeeSeeYou-0.1.4-windows-x86_64-setup.exe
+            activitywatch/dist/SeeSeeYou-0.1.4-windows-x86_64-portable.zip
 
-      - name: Publish the SeeSeeYou v0.1.3 release
+      - name: Publish the SeeSeeYou v0.1.4 release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          setup_file=activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-setup.exe
-          portable_file=activitywatch/dist/SeeSeeYou-0.1.3-windows-x86_64-portable.zip
-          if gh release view v0.1.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload v0.1.3 "$setup_file" "$portable_file" \
+          setup_file=activitywatch/dist/SeeSeeYou-0.1.4-windows-x86_64-setup.exe
+          portable_file=activitywatch/dist/SeeSeeYou-0.1.4-windows-x86_64-portable.zip
+          if gh release view v0.1.4 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v0.1.4 "$setup_file" "$portable_file" \
               --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create v0.1.3 "$setup_file" "$portable_file" \
+            gh release create v0.1.4 "$setup_file" "$portable_file" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "SeeSeeYou 0.1.3" \
+              --title "SeeSeeYou 0.1.4" \
               --notes "完整 My Day 工作台、Google 登录、5600 本机采集、真实同步状态与安全账号/团队重新绑定。 Full My Day workspace, Google sign-in, local collection on port 5600, real sync health, and safe account/team rebinding."
           fi
