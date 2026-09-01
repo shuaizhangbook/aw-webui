@@ -1,4 +1,4 @@
-name: Build SeeSeeYou Windows desktop
+name: Build Claritide Windows desktop
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ env:
 
 jobs:
   build-windows-desktop:
-    name: SeeSeeYou Windows desktop
+    name: Claritide Windows desktop
     runs-on: windows-latest
     timeout-minutes: 120
 
@@ -21,7 +21,7 @@ jobs:
         shell: bash
 
     steps:
-      - name: Check out the SeeSeeYou web UI
+      - name: Check out the Claritide web UI
         uses: actions/checkout@v7
         with:
           path: custom-webui
@@ -32,7 +32,7 @@ jobs:
           git -C activitywatch checkout 115e49e111cd0a248be6230680544235ae3a5a8e
           git -C activitywatch submodule update --init --recursive --depth 1
 
-      - name: Check out the SeeSeeYou sync agent
+      - name: Check out the Claritide sync agent
         uses: actions/checkout@v7
         with:
           repository: shuaizhangbook/seeseeyou
@@ -40,7 +40,7 @@ jobs:
           path: seeseeyou
           token: ${{ secrets.SEESEEYOU_REPO_TOKEN }}
 
-      - name: Apply SeeSeeYou desktop customizations
+      - name: Apply Claritide desktop customizations
         run: |
           tar \
             --exclude=.git \
@@ -59,8 +59,8 @@ jobs:
       - name: Verify the desktop port migration contract
         run: |
           grep -F 'port: 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
-          grep -F 'Migrated SeeSeeYou local port from 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
-          grep -F 'Migrated SeeSeeYou sync API from port 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'Migrated Claritide local port from 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
+          grep -F 'Migrated Claritide sync API from port 5601 to 5600' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'sync-rebind-pending' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'fresh_sync_cursor_timestamp' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'commands.allow = ["get_sync_status"]' activitywatch/aw-tauri/src-tauri/permissions/sync-control.toml
@@ -86,13 +86,13 @@ jobs:
           grep -F '"seeseeyou-remote"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
           grep -F 'SEESEEYOU_WORKSPACE_URL' activitywatch/aw-tauri/src-tauri/src/lib.rs
           grep -F 'include_str!("seeseeyou_bridge.js")' activitywatch/aw-tauri/src-tauri/src/lib.rs
-          grep -F '"version": "0.1.6"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
+          grep -F '"version": "0.2.0"' activitywatch/aw-tauri/src-tauri/tauri.conf.json
           python - <<'PY'
           from pathlib import Path
 
           lock = Path('activitywatch/aw-tauri/src-tauri/Cargo.lock').read_text(encoding='utf-8')
           packages = lock.split('[[package]]')
-          assert any('name = "aw-tauri"' in package and 'version = "0.1.6"' in package for package in packages)
+          assert any('name = "aw-tauri"' in package and 'version = "0.2.0"' in package for package in packages)
           assert any('name = "android_system_properties"' in package and 'version = "0.1.5"' in package for package in packages)
           PY
 
@@ -117,7 +117,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Verify the deployed SeeSeeYou desktop APIs
+      - name: Verify the deployed Claritide desktop APIs
         run: |
           python - <<'PY'
           import json
@@ -149,7 +149,7 @@ jobs:
               raise AssertionError('unauthenticated /me/teams must return 401')
           PY
 
-      - name: Test SeeSeeYou Google sign-in helpers
+      - name: Test Claritide Google sign-in helpers
         working-directory: custom-webui
         run: |
           npm ci
@@ -157,11 +157,11 @@ jobs:
           npm run build
           cp -R dist ../activitywatch/aw-tauri/aw-webui/dist
 
-      - name: Generate SeeSeeYou desktop icons
+      - name: Generate Claritide desktop icons
         working-directory: activitywatch/aw-tauri
         run: |
           npm ci
-          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
+          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/claritide-icon.svg"
 
       - name: Test desktop engine
         working-directory: activitywatch/aw-tauri/src-tauri
@@ -193,7 +193,7 @@ jobs:
           choco install innosetup -y --no-progress
           python -m pip install poetry==2.2.1 pyinstaller==6.15.0 -r seeseeyou/backend/requirements.txt
 
-      - name: Test SeeSeeYou enrollment and sync agent
+      - name: Test Claritide enrollment and sync agent
         working-directory: seeseeyou
         run: |
           python -m unittest \
@@ -213,7 +213,7 @@ jobs:
             usage-sync.py
           ./dist/seeseeyou-sync.exe --help
 
-      - name: Build SeeSeeYou desktop
+      - name: Build Claritide desktop
         working-directory: activitywatch
         run: |
           python -m venv venv
@@ -231,14 +231,14 @@ jobs:
           bash scripts/package/package-all.sh
           setup_file=$(find dist -maxdepth 1 -name '*-setup.exe' -print -quit)
           zip_file=$(find dist -maxdepth 1 -name '*.zip' -print -quit)
-          mv "$setup_file" dist/SeeSeeYou-0.1.6-windows-x86_64-setup.exe
+          mv "$setup_file" dist/Claritide-0.2.0-windows-x86_64-setup.exe
           rm -f "$zip_file"
           portable_stage=$(mktemp -d)
-          mkdir -p "$portable_stage/SeeSeeYou"
-          cp -R dist/activitywatch/. "$portable_stage/SeeSeeYou/"
+          mkdir -p "$portable_stage/Claritide"
+          cp -R dist/activitywatch/. "$portable_stage/Claritide/"
           (cd "$portable_stage" && 7z a -tzip -mx=9 \
-            "$GITHUB_WORKSPACE/activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-portable.zip" \
-            SeeSeeYou)
+            "$GITHUB_WORKSPACE/activitywatch/dist/Claritide-0.2.0-windows-x86_64-portable.zip" \
+            Claritide)
 
       - name: Show generated packages
         working-directory: activitywatch
@@ -247,26 +247,26 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: SeeSeeYou-0.1.6-Windows
+          name: Claritide-0.2.0-Windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-setup.exe
-            activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-portable.zip
+            activitywatch/dist/Claritide-0.2.0-windows-x86_64-setup.exe
+            activitywatch/dist/Claritide-0.2.0-windows-x86_64-portable.zip
 
-      - name: Publish the SeeSeeYou v0.1.6 release
+      - name: Publish the Claritide v0.2.0 release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          setup_file=activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-setup.exe
-          portable_file=activitywatch/dist/SeeSeeYou-0.1.6-windows-x86_64-portable.zip
-          if gh release view v0.1.6 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload v0.1.6 "$setup_file" "$portable_file" \
+          setup_file=activitywatch/dist/Claritide-0.2.0-windows-x86_64-setup.exe
+          portable_file=activitywatch/dist/Claritide-0.2.0-windows-x86_64-portable.zip
+          if gh release view v0.2.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v0.2.0 "$setup_file" "$portable_file" \
               --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create v0.1.6 "$setup_file" "$portable_file" \
+            gh release create v0.2.0 "$setup_file" "$portable_file" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "SeeSeeYou 0.1.6" \
+              --title "Claritide 0.2.0" \
               --notes "完整 My Day 工作台、Google 登录、5600 本机采集、真实同步状态与安全账号/团队重新绑定。 Full My Day workspace, Google sign-in, local collection on port 5600, real sync health, and safe account/team rebinding."
           fi
