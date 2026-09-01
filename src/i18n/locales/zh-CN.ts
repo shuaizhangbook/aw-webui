@@ -1,7 +1,7 @@
 // Simplified Chinese locale
 export default {
   app: {
-    name: 'SeeSeeYou',
+    name: 'Claritide',
     researchEdition: 'Research Edition',
   },
   nav: {

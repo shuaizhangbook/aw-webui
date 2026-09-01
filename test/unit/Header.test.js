@@ -9,7 +9,7 @@ jest.mock('~/i18n', () => ({
   setAppLocale: locale => mockSetAppLocale(locale),
 }));
 
-describe('SeeSeeYou header', () => {
+describe('Claritide header', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     mockSetAppLocale.mockClear();
@@ -30,10 +30,10 @@ describe('SeeSeeYou header', () => {
     });
   }
 
-  test('only exposes the SeeSeeYou My Day surface', () => {
+  test('only exposes the Claritide My Day surface', () => {
     const text = mountHeader().text();
 
-    expect(text).toContain('SeeSeeYou');
+    expect(text).toContain('Claritide');
     expect(text).toContain('nav.myDay');
     expect(text).not.toContain('nav.activity');
     expect(text).not.toContain('nav.timeline');

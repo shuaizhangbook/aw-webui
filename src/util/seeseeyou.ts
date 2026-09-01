@@ -57,7 +57,7 @@ export async function seeSeeYouRequest<T>(path: string, options: RequestInit = {
   try {
     response = await fetch(`${getSeeSeeYouApiBase()}${path}`, { ...options, headers });
   } catch (error) {
-    throw new SeeSeeYouApiError('Unable to reach the SeeSeeYou service');
+    throw new SeeSeeYouApiError('Unable to reach the Claritide service');
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -209,7 +209,7 @@ export async function autoEnrollDesktop(teamId: string): Promise<DesktopEnrollme
     headers: { 'X-Team-ID': teamId },
     body: JSON.stringify({
       installation_id: getDesktopInstallationId(),
-      device_name: `SeeSeeYou ${platform}`,
+      device_name: `Claritide ${platform}`,
       platform,
     }),
   });

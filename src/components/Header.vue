@@ -2,9 +2,9 @@
 header.app-header.fixed-top
   b-navbar.shell-navbar
     b-navbar-brand.brand(to="/my-day")
-      span.brand-mark S
+      span.brand-mark C
       span.brand-copy
-        strong SeeSeeYou
+        strong Claritide
         small Work clearly
 
     span.current-page

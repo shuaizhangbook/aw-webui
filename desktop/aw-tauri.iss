@@ -1,12 +1,12 @@
-; Inno Setup script for SeeSeeYou Desktop
+; Inno Setup script for Claritide Desktop
 ;
 ; This is separate from activitywatch-setup.iss (aw-qt) to avoid
 ; installation collisions. Uses a different AppId, install directory,
 ; and display name.
 
-#define MyAppName "SeeSeeYou"
-#define MyAppVersion "0.1.5"
-#define MyAppPublisher "SeeSeeYou"
+#define MyAppName "Claritide"
+#define MyAppVersion "0.2.0"
+#define MyAppPublisher "Claritide"
 #define MyAppURL "https://watch.sding.me/"
 #define MyAppExeName "aw-tauri.exe"
 #define RootDir "..\.."
@@ -24,7 +24,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL="https://github.com/shuaizhangbook/aw-webui/issues"
 AppUpdatesURL="https://github.com/shuaizhangbook/aw-webui/releases"
-DefaultDirName={autopf}\SeeSeeYou
+DefaultDirName={autopf}\Claritide
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog

@@ -2,7 +2,7 @@
   <div class="my-day-page">
     <section class="hero-panel">
       <div>
-        <div class="eyebrow">SEESEEYOU · MY DAY</div>
+        <div class="eyebrow">CLARITIDE · MY DAY</div>
         <h2>{{ greeting }}</h2>
         <p>{{ formattedDate }} · {{ copy.subtitle }}</p>
       </div>
@@ -258,7 +258,7 @@ const COPY = {
   zh: {
     subtitle: '把今天真正重要的事情放在一个地方',
     workspace: '个人工作台',
-    loginTitle: '连接你的 SeeSeeYou 账号',
+    loginTitle: '连接你的 Claritide 账号',
     loginBody: '使用数据只在本机安全处理，My Day 仅同步任务和已授权的工作摘要。',
     featureLocal: '✓ 使用数据在本机安全处理',
     featureTasks: '✓ 团队任务与个人计划统一',
@@ -270,7 +270,7 @@ const COPY = {
     googleWaiting: '请在浏览器完成 Google 登录…',
     orPassword: '或使用账号密码',
     signingIn: '正在连接…',
-    signIn: '登录 SeeSeeYou',
+    signIn: '登录 Claritide',
     loginNote: '首次登录会自动连接这台电脑并同步在线状态，无需设备码。',
     autoSyncing: '正在同步',
     autoSyncActive: '同步已开启',
@@ -287,7 +287,7 @@ const COPY = {
     logout: '退出',
     todayFocus: '今日重点',
     noFocus: '还没有设置今日重点',
-    focusFallback: '专注完成这项工作，SeeSeeYou 会记录你的执行状态。',
+    focusFallback: '专注完成这项工作，Claritide 会记录你的执行状态。',
     noFocusBody: '从下面的任务中选择一项作为今天最重要的工作。',
     due: '截止',
     executionBoard: '执行看板',
@@ -324,7 +324,7 @@ const COPY = {
   en: {
     subtitle: 'Keep what matters today in one place',
     workspace: 'Personal workspace',
-    loginTitle: 'Connect your SeeSeeYou account',
+    loginTitle: 'Connect your Claritide account',
     loginBody:
       'Usage data is processed securely on this computer. My Day only syncs tasks and approved work summaries.',
     featureLocal: '✓ Local activity stays on this computer',
@@ -337,7 +337,7 @@ const COPY = {
     googleWaiting: 'Finish signing in with Google in your browser…',
     orPassword: 'or use your account password',
     signingIn: 'Connecting…',
-    signIn: 'Sign in to SeeSeeYou',
+    signIn: 'Sign in to Claritide',
     loginNote:
       'Signing in registers this computer and syncs online status automatically. No device code is required.',
     autoSyncing: 'Syncing',
@@ -358,7 +358,7 @@ const COPY = {
     logout: 'Sign out',
     todayFocus: "Today's focus",
     noFocus: 'No focus selected yet',
-    focusFallback: 'Stay with this task while SeeSeeYou records its execution status.',
+    focusFallback: 'Stay with this task while Claritide records its execution status.',
     noFocusBody: 'Choose one task below as the most important work for today.',
     due: 'Due',
     executionBoard: 'Execution board',
@@ -680,7 +680,7 @@ export default {
       } catch (error) {
         this.syncState = 'error';
         this.syncError = this.syncErrorMessage(error);
-        console.warn('Unable to configure automatic SeeSeeYou sync:', error);
+        console.warn('Unable to configure automatic Claritide sync:', error);
       }
     },
     async refresh() {
