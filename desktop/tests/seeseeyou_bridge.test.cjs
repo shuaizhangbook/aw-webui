@@ -32,7 +32,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
     const value = await invoke(command, args);
     if (command === 'get_sync_status' && value && typeof value === 'object') {
       return {
-        desktop_version: '0.1.6',
+        desktop_version: '0.2.0',
         bridge_protocol: 2,
         ...value,
       };
@@ -277,7 +277,7 @@ test('recent server activity overrides a stale native worker error', async () =>
       calls.push(command);
       if (command === 'get_sync_status') {
         return {
-          desktop_version: '0.1.6',
+          desktop_version: '0.2.0',
           bridge_protocol: 2,
           configured: true,
           paused: false,
