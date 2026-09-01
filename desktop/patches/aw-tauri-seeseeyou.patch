@@ -7,7 +7,7 @@ index 9f93e2d..0a3e00d 100644
  [[package]]
  name = "aw-tauri"
 -version = "0.1.0"
-+version = "0.1.6"
++version = "0.2.0"
  dependencies = [
   "aw-datastore",
   "aw-server",
@@ -19,7 +19,7 @@ index d1da14d..3133172 100644
  [package]
  name = "aw-tauri"
 -version = "0.1.0"
-+version = "0.1.6"
++version = "0.2.0"
  description = "ActivityWatch UI built with Tauri"
  authors = ["Erik Bjäreholt <erik@bjareho.lt>", "Brian Vuku <brayo@brayo.dev>"]
  license = "MPL-2.0"
@@ -58,7 +58,7 @@ index 0000000..31bba01
 +{
 +  "$schema": "../gen/schemas/desktop-schema.json",
 +  "identifier": "seeseeyou-join",
-+  "description": "System-browser OAuth bridge for the SeeSeeYou invitation page",
++  "description": "System-browser OAuth bridge for the Claritide invitation page",
 +  "windows": [
 +    "main"
 +  ],
@@ -82,7 +82,7 @@ index 0000000..8379045
 +{
 +  "$schema": "../gen/schemas/desktop-schema.json",
 +  "identifier": "seeseeyou-remote",
-+  "description": "Minimal native bridge for the trusted SeeSeeYou workspace",
++  "description": "Minimal native bridge for the trusted Claritide workspace",
 +  "windows": [
 +    "main"
 +  ],
@@ -115,17 +115,17 @@ index 0000000..4a39cd1
 @@ -0,0 +1,39 @@
 +[[permission]]
 +identifier = "allow-get-sync-status"
-+description = "Allows the SeeSeeYou dashboard to read local sync configuration status."
++description = "Allows the Claritide dashboard to read local sync configuration status."
 +commands.allow = ["get_sync_status"]
 +
 +[[permission]]
 +identifier = "allow-configure-sync"
-+description = "Allows the SeeSeeYou dashboard to configure local activity synchronization."
++description = "Allows the Claritide dashboard to configure local activity synchronization."
 +commands.allow = ["configure_sync"]
 +
 +[[permission]]
 +identifier = "allow-get-installation-id"
-+description = "Allows the SeeSeeYou dashboard to obtain this installation's stable native identifier."
++description = "Allows the Claritide dashboard to obtain this installation's stable native identifier."
 +commands.allow = ["get_or_create_installation_id"]
 +
 +[[permission]]
@@ -135,22 +135,22 @@ index 0000000..4a39cd1
 +
 +[[permission]]
 +identifier = "allow-pause-sync"
-+description = "Allows the SeeSeeYou dashboard to pause local activity synchronization on logout."
++description = "Allows the Claritide dashboard to pause local activity synchronization on logout."
 +commands.allow = ["pause_sync"]
 +
 +[[permission]]
 +identifier = "allow-resume-sync"
-+description = "Allows the SeeSeeYou dashboard to resume the saved identity after authentication."
++description = "Allows the Claritide dashboard to resume the saved identity after authentication."
 +commands.allow = ["resume_sync"]
 +
 +[[permission]]
 +identifier = "allow-clear-sync"
-+description = "Allows the SeeSeeYou dashboard to disconnect local activity synchronization."
++description = "Allows the Claritide dashboard to disconnect local activity synchronization."
 +commands.allow = ["clear_sync"]
 +
 +[[permission]]
 +identifier = "allow-trigger-sync"
-+description = "Allows an authenticated SeeSeeYou workspace to trigger background synchronization."
++description = "Allows an authenticated Claritide workspace to trigger background synchronization."
 +commands.allow = ["trigger_sync_now"]
 diff --git a/src-tauri/src/dirs.rs b/src-tauri/src/dirs.rs
 index 1f17798..f610b97 100644
@@ -285,30 +285,30 @@ index a51b1f0..32e329d 100644
  
 +fn sync_config_path() -> PathBuf {
 +    dirs::get_config_dir()
-+        .expect("Failed to get SeeSeeYou config dir")
++        .expect("Failed to get Claritide config dir")
 +        .join("sync-config.json")
 +}
 +
 +fn sync_paused_path() -> PathBuf {
 +    dirs::get_config_dir()
-+        .expect("Failed to get SeeSeeYou config dir")
++        .expect("Failed to get Claritide config dir")
 +        .join("sync-paused")
 +}
 +
 +fn sync_rebind_pending_path() -> PathBuf {
 +    dirs::get_config_dir()
-+        .expect("Failed to get SeeSeeYou config dir")
++        .expect("Failed to get Claritide config dir")
 +        .join("sync-rebind-pending")
 +}
 +
 +fn desktop_identity_path() -> PathBuf {
 +    dirs::get_config_dir()
-+        .expect("Failed to get SeeSeeYou config dir")
++        .expect("Failed to get Claritide config dir")
 +        .join("desktop-identity.json")
 +}
 +
 +fn sync_state_paths() -> Vec<PathBuf> {
-+    let dir = dirs::get_config_dir().expect("Failed to get SeeSeeYou config dir");
++    let dir = dirs::get_config_dir().expect("Failed to get Claritide config dir");
 +    [
 +        "state.json",
 +        "canonical-snapshots.sqlite3",
@@ -347,13 +347,13 @@ index a51b1f0..32e329d 100644
 +        now_ms.saturating_add(300_000 - remainder)
 +    };
 +    DateTime::<Utc>::from_timestamp_millis(next_boundary_ms as i64)
-+        .expect("current SeeSeeYou timestamp must be representable")
++        .expect("current Claritide timestamp must be representable")
 +        .to_rfc3339_opts(SecondsFormat::Millis, true)
 +}
 +
 +fn seed_fresh_sync_cursor() -> Result<(), String> {
 +    let state_path = dirs::get_config_dir()
-+        .expect("Failed to get SeeSeeYou config dir")
++        .expect("Failed to get Claritide config dir")
 +        .join("state.json");
 +    let identity_not_before_utc = fresh_sync_cursor_timestamp(now_unix_ms());
 +    let serialized = serde_json::to_vec_pretty(&serde_json::json!({
@@ -384,7 +384,7 @@ index a51b1f0..32e329d 100644
 +        return Err("Incomplete sync configuration".to_string());
 +    }
 +    if config.server_url.trim().trim_end_matches('/') != "https://watch.sding.me" {
-+        return Err("Untrusted SeeSeeYou sync server".to_string());
++        return Err("Untrusted Claritide sync server".to_string());
 +    }
 +    if !matches!(
 +        config.local_api_url.trim().trim_end_matches('/'),
@@ -425,7 +425,7 @@ index a51b1f0..32e329d 100644
 +    validate_sync_config(&config)?;
 +    write_sync_config_atomically(&config)
 +        .map_err(|error| format!("Unable to migrate sync configuration to port 5600: {error}"))?;
-+    info!("Migrated SeeSeeYou sync API from port 5601 to 5600");
++    info!("Migrated Claritide sync API from port 5601 to 5600");
 +    Ok(())
 +}
 +
@@ -529,7 +529,7 @@ index a51b1f0..32e329d 100644
 +    let config_path = sync_config_path();
 +    let binary_path = sync_binary_path().ok_or_else(|| "Unable to locate sync program".to_string())?;
 +    if !binary_path.exists() {
-+        return Err("SeeSeeYou sync program is missing".to_string());
++        return Err("Claritide sync program is missing".to_string());
 +    }
 +    let mut command = Command::new(binary_path);
 +    command.arg("--config").arg(config_path);
@@ -537,7 +537,7 @@ index a51b1f0..32e329d 100644
 +    command.creation_flags(0x08000000);
 +    let mut child = command
 +        .spawn()
-+        .map_err(|error| format!("Unable to start SeeSeeYou sync: {error}"))?;
++        .map_err(|error| format!("Unable to start Claritide sync: {error}"))?;
 +    loop {
 +        if generation != SYNC_GENERATION.load(Ordering::SeqCst) || sync_paused_path().exists() {
 +            let _ = child.kill();
@@ -549,12 +549,12 @@ index a51b1f0..32e329d 100644
 +            Err(error) => {
 +                let _ = child.kill();
 +                let _ = child.wait();
-+                return Err(format!("Unable to read SeeSeeYou sync status: {error}"));
++                return Err(format!("Unable to read Claritide sync status: {error}"));
 +            }
 +        };
 +        match status {
 +            Some(status) if status.success() => return Ok(true),
-+            Some(status) => return Err(format!("SeeSeeYou sync exited with status {status}")),
++            Some(status) => return Err(format!("Claritide sync exited with status {status}")),
 +            None => thread::sleep(Duration::from_millis(100)),
 +        }
 +    }
@@ -565,11 +565,11 @@ index a51b1f0..32e329d 100644
 +    let deadline = Instant::now() + Duration::from_secs(60);
 +    while TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_err() {
 +        if Instant::now() >= deadline {
-+            return Err(format!("Local SeeSeeYou server did not start on port {port}"));
++            return Err(format!("Local Claritide server did not start on port {port}"));
 +        }
 +        thread::sleep(Duration::from_millis(250));
 +    }
-+    info!("Local SeeSeeYou server is ready on port {port}");
++    info!("Local Claritide server is ready on port {port}");
 +    Ok(())
 +}
 +
@@ -624,7 +624,7 @@ index a51b1f0..32e329d 100644
 +            return Ok(false);
 +        }
 +        if local_buckets_ready(port) {
-+            info!("Local SeeSeeYou window and AFK collectors are ready");
++            info!("Local Claritide window and AFK collectors are ready");
 +            return Ok(true);
 +        }
 +        if Instant::now() >= deadline {
@@ -638,7 +638,7 @@ index a51b1f0..32e329d 100644
 +    match sender.try_send(()) {
 +        Ok(()) | Err(mpsc::TrySendError::Full(())) => Ok(()),
 +        Err(mpsc::TrySendError::Disconnected(())) => {
-+            Err("SeeSeeYou sync scheduler is unavailable".to_string())
++            Err("Claritide sync scheduler is unavailable".to_string())
 +        }
 +    }
 +}
@@ -646,7 +646,7 @@ index a51b1f0..32e329d 100644
 +fn trigger_sync() -> Result<(), String> {
 +    let sender = SYNC_TRIGGER
 +        .get()
-+        .ok_or_else(|| "SeeSeeYou sync scheduler is not ready".to_string())?;
++        .ok_or_else(|| "Claritide sync scheduler is not ready".to_string())?;
 +    queue_sync_trigger(sender)
 +}
 +
@@ -884,7 +884,7 @@ index a51b1f0..32e329d 100644
 +        return Err("This computer must be re-enrolled before sync can resume".to_string());
 +    }
 +    let mut config = load_validated_sync_config()?
-+        .ok_or_else(|| "SeeSeeYou sync is not configured".to_string())?;
++        .ok_or_else(|| "Claritide sync is not configured".to_string())?;
 +    if config.employee_id != employee_id
 +        || config
 +            .team_id
@@ -919,13 +919,13 @@ index a51b1f0..32e329d 100644
 +        .lock()
 +        .map_err(|_| "Sync control is unavailable".to_string())?;
 +    if sync_paused_path().exists() {
-+        return Err("SeeSeeYou sync is paused".to_string());
++        return Err("Claritide sync is paused".to_string());
 +    }
 +    if sync_rebind_pending_path().exists() {
 +        return Err("This computer must be re-enrolled before sync can run".to_string());
 +    }
 +    if load_validated_sync_config()?.is_none() {
-+        return Err("SeeSeeYou sync is not configured".to_string());
++        return Err("Claritide sync is not configured".to_string());
 +    }
 +    trigger_sync()
 +}
@@ -959,8 +959,8 @@ index a51b1f0..32e329d 100644
                  .builder()
 -                .title("Aw-Tauri")
 -                .body("Welcome to Aw-Tauri! Click on the tray icon to launch the dashboard")
-+                .title("SeeSeeYou")
-+                .body("SeeSeeYou is ready. Raw activity stays on this computer; privacy-reduced summaries sync only to your authorized team.")
++                .title("Claritide")
++                .body("Claritide is ready. Raw activity stays on this computer; privacy-reduced summaries sync only to your authorized team.")
                  .show()
                  .expect("Failed to show first run notification");
              if let Some(window) = app.webview_windows().get("main") {
@@ -978,7 +978,7 @@ index a51b1f0..32e329d 100644
 -
 -    url
 +fn build_dashboard_url(_port: u16, _api_key: Option<&str>) -> Url {
-+    Url::parse(SEESEEYOU_WORKSPACE_URL).expect("Failed to parse SeeSeeYou workspace URL")
++    Url::parse(SEESEEYOU_WORKSPACE_URL).expect("Failed to parse Claritide workspace URL")
  }
  
  pub fn listen_for_lockfile() {
@@ -991,9 +991,9 @@ index a51b1f0..32e329d 100644
 +                    if config.port == 5601 {
 +                        config.port = 5600;
 +                        if let Err(error) = write_formatted_config(&config, &config_path) {
-+                            warn!("Failed to migrate SeeSeeYou local port: {error}");
++                            warn!("Failed to migrate Claritide local port: {error}");
 +                        } else {
-+                            info!("Migrated SeeSeeYou local port from 5601 to 5600");
++                            info!("Migrated Claritide local port from 5601 to 5600");
 +                        }
 +                    }
 +                    config
@@ -1050,11 +1050,11 @@ index a51b1f0..32e329d 100644
                      app.dialog()
 -                        .message(format!("Port {} is already in use", port))
 +                        .message(format!(
-+                            "SeeSeeYou 无法启动：本地端口 {port} 已被占用。请退出旧版 ActivityWatch 或重复运行的 SeeSeeYou 后重试。\n\nSeeSeeYou cannot start because local port {port} is already in use. Quit the existing ActivityWatch or duplicate SeeSeeYou instance and try again."
++                            "Claritide 无法启动：本地端口 {port} 已被占用。请退出旧版 ActivityWatch 或重复运行的 Claritide 后重试。\n\nClaritide cannot start because local port {port} is already in use. Quit the existing ActivityWatch or duplicate Claritide instance and try again."
 +                        ))
                          .kind(MessageDialogKind::Error)
 -                        .title("Error")
-+                        .title("SeeSeeYou")
++                        .title("Claritide")
                          .show(|_| {});
                      panic!("Port {} is already in use", port);
                  }
@@ -1087,7 +1087,7 @@ index a51b1f0..32e329d 100644
 -                    }, true);
 -                    "#,
 -                )
-+                .title("SeeSeeYou")
++                .title("Claritide")
 +                .inner_size(1180.0, 780.0)
 +                .min_inner_size(920.0, 640.0)
 +                .visible(true)
@@ -1100,10 +1100,10 @@ index a51b1f0..32e329d 100644
 -                let manager_state = manager::start_manager();
  
 -                let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)
-+                let open = MenuItem::with_id(app, "open", "Open SeeSeeYou", true, None::<&str>)
++                let open = MenuItem::with_id(app, "open", "Open Claritide", true, None::<&str>)
                      .expect("Failed to create open menu item");
 -                let quit = MenuItem::with_id(app, "quit", "Quit ActivityWatch", true, None::<&str>)
-+                let quit = MenuItem::with_id(app, "quit", "Quit SeeSeeYou", true, None::<&str>)
++                let quit = MenuItem::with_id(app, "quit", "Quit Claritide", true, None::<&str>)
                      .expect("Failed to create quit menu item");
 -                let autostart_item = autostart::build_menu_item(app.handle());
  
@@ -1120,7 +1120,7 @@ index a51b1f0..32e329d 100644
                      .menu(&menu)
                      .show_menu_on_left_click(true)
 -                    .tooltip("ActivityWatch");
-+                    .tooltip("SeeSeeYou");
++                    .tooltip("Claritide");
                  let tray = tray_builder.build(app).expect("Failed to create tray");
  
                  init_tray_id(tray.id().clone());
@@ -1308,10 +1308,10 @@ index 56a1e71..7047205 100644
 +    _modules: &ModulesSnapshot,
  ) -> HashMap<String, CheckMenuItem<Wry>> {
 -    let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)
-+    let open = MenuItem::with_id(app, "open", "Open SeeSeeYou", true, None::<&str>)
++    let open = MenuItem::with_id(app, "open", "Open Claritide", true, None::<&str>)
          .expect("failed to create open menu item");
 -    let quit = MenuItem::with_id(app, "quit", "Quit ActivityWatch", true, None::<&str>)
-+    let quit = MenuItem::with_id(app, "quit", "Quit SeeSeeYou", true, None::<&str>)
++    let quit = MenuItem::with_id(app, "quit", "Quit Claritide", true, None::<&str>)
          .expect("failed to create quit menu item");
 -
 -    let mut module_items = HashMap::new();
@@ -1388,7 +1388,7 @@ index 56a1e71..7047205 100644
 -                                         Open the ActivityWatch tray menu and choose Open log folder, \
 -                                         then check the log for “{name_clone}” for the error details."
 +                                        "Background collection is temporarily unavailable.\n\n\
-+                                         SeeSeeYou will keep retrying automatically. \
++                                         Claritide will keep retrying automatically. \
 +                                         No action is needed."
                                      ),
                                      module_alert_ui::StatusKind::Warning,
@@ -1420,7 +1420,7 @@ index 56a1e71..7047205 100644
 -}
 -
 -/// Route a module crash warning: mini → notification, daemon → log, GUI → replaceable webview.
-+/// Collector failures are retried silently and recorded in the SeeSeeYou logs.
++/// Collector failures are retried silently and recorded in the Claritide logs.
  fn show_module_warning(
 -    event_tx: &Option<Sender<ManagerEvent>>,
 +    _event_tx: &Option<Sender<ManagerEvent>>,
@@ -1445,7 +1445,7 @@ index 56a1e71..7047205 100644
 -        .expect("Failed to get app handle")
 -        .clone();
 -    module_alert_ui::show_or_update(&app, module_name, message, kind);
-+    warn!("SeeSeeYou background collection component {module_name}: {message}");
++    warn!("Claritide background collection component {module_name}: {message}");
  }
 -
 -/// Update the module-alert UI when a module comes back after a crash restart.
@@ -1470,7 +1470,7 @@ index 56a1e71..7047205 100644
 -    module_alert_ui::update_if_open(&app, module_name, message, module_alert_ui::StatusKind::Ok);
 +/// Recovery remains available in logs without exposing internal module names in the UI.
 +fn show_module_recovered(_event_tx: &Option<Sender<ManagerEvent>>, module_name: &str) {
-+    info!("SeeSeeYou background collection component {module_name} recovered");
++    info!("Claritide background collection component {module_name} recovered");
  }
  
  fn send_tauri_notification(title: &str, message: &str) {
@@ -1509,7 +1509,7 @@ index 0000000..97ff48c
 +
 +  var TRUSTED_ORIGIN = 'https://watch.sding.me';
 +  var API = TRUSTED_ORIGIN + '/api/v1';
-+  var DESKTOP_VERSION = '0.1.6';
++  var DESKTOP_VERSION = '0.2.0';
 +  var BRIDGE_PROTOCOL = 2;
 +  var TOKEN_KEYS = ['usage_admin_token', 'my_day_session_token'];
 +  var TEAM_KEY = 'my_day_selected_team_id';
@@ -1567,9 +1567,9 @@ index 0000000..97ff48c
 +  }
 +
 +  function brandDesktopWorkspace() {
-+    document.title = 'SeeSeeYou';
++    document.title = 'Claritide';
 +    var company = document.querySelector('.global-company');
-+    if (company) company.textContent = 'SeeSeeYou';
++    if (company) company.textContent = 'Claritide';
 +    var currentMark = document.querySelector('.global-brand-mark');
 +    if (currentMark && currentMark.tagName === 'IMG') {
 +      var mark = document.createElement('span');
@@ -1930,8 +1930,8 @@ index 0000000..97ff48c
 +        }
 +        rebindRequired = false;
 +        if (status.binary_ready === false) {
-+          throw new Error(copy('后台同步程序缺失，请重新安装 SeeSeeYou。',
-+            'The background sync program is missing. Reinstall SeeSeeYou.'));
++          throw new Error(copy('后台同步程序缺失，请重新安装 Claritide。',
++            'The background sync program is missing. Reinstall Claritide.'));
 +        }
 +        var resumeTeamId = status.team_id || selectedTeam(teams);
 +        if (!resumeTeamId) {
@@ -2000,7 +2000,7 @@ index 0000000..97ff48c
 +        headers: { 'X-Team-ID': teamId },
 +        body: JSON.stringify({
 +          installation_id: nativeInstallationId,
-+          device_name: 'SeeSeeYou Windows',
++          device_name: 'Claritide Windows',
 +          platform: 'Windows'
 +        })
 +      }, token);
@@ -2240,8 +2240,8 @@ index 0000000..97ff48c
 +      await invoke('open_external', { url: trustedHttpsUrl(started.authorization_url) });
 +      var errorBox = document.getElementById('jErr');
 +      if (errorBox) {
-+        errorBox.textContent = copy('请在浏览器完成注册，然后返回 SeeSeeYou 登录。',
-+          'Finish signup in the browser, then return to SeeSeeYou and sign in.');
++        errorBox.textContent = copy('请在浏览器完成注册，然后返回 Claritide 登录。',
++          'Finish signup in the browser, then return to Claritide and sign in.');
 +        errorBox.style.display = '';
 +      }
 +      window.setTimeout(function () {
@@ -2414,8 +2414,8 @@ index b5b9ab8..96416d8 100644
 -  "productName": "aw-tauri",
 -  "version": "0.1.0",
 -  "identifier": "net.activitywatch.tauri",
-+  "productName": "SeeSeeYou",
-+  "version": "0.1.6",
++  "productName": "Claritide",
++  "version": "0.2.0",
 +  "identifier": "com.seeseeyou.desktop",
    "app": {
      "windows": [],
