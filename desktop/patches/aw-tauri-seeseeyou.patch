@@ -1503,7 +1503,7 @@ new file mode 100644
 index 0000000..97ff48c
 --- /dev/null
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -0,0 +1,900 @@
+@@ -0,0 +1,914 @@
 +(function () {
 +  'use strict';
 +
@@ -1562,6 +1562,18 @@ index 0000000..97ff48c
 +    return isEnglish() ? en : zh;
 +  }
 +
++  function desktopPlatform() {
++    var navigatorValue = window.navigator || {};
++    var platform = String(
++      navigatorValue.userAgentData && navigatorValue.userAgentData.platform
++        ? navigatorValue.userAgentData.platform
++        : navigatorValue.platform || navigatorValue.userAgent || ''
++    ).toLowerCase();
++    if (platform.indexOf('mac') !== -1) return 'macOS';
++    if (platform.indexOf('linux') !== -1 || platform.indexOf('x11') !== -1) return 'Linux';
++    return 'Windows';
++  }
++
 +  function showDesktopError(message) {
 +    if (typeof window.alert === 'function') window.alert(String(message || ''));
 +  }
@@ -1574,7 +1586,7 @@ index 0000000..97ff48c
 +    if (currentMark && currentMark.tagName === 'IMG') {
 +      var mark = document.createElement('span');
 +      mark.className = currentMark.className;
-+      mark.textContent = 'S';
++      mark.textContent = 'C';
 +      mark.setAttribute('aria-hidden', 'true');
 +      mark.style.cssText = [
 +        'display:grid',
@@ -1991,6 +2003,7 @@ index 0000000..97ff48c
 +          'Choose this computer\'s team, then retry.'));
 +      }
 +      var nativeInstallationId = await installationId();
++      var platform = desktopPlatform();
 +      if (syncContextChanged(token, teamSelection)) {
 +        syncRerunRequested = true;
 +        return;
@@ -2000,8 +2013,8 @@ index 0000000..97ff48c
 +        headers: { 'X-Team-ID': teamId },
 +        body: JSON.stringify({
 +          installation_id: nativeInstallationId,
-+          device_name: 'Claritide Windows',
-+          platform: 'Windows'
++          device_name: 'Claritide ' + platform,
++          platform: platform
 +        })
 +      }, token);
 +      window.localStorage.setItem(DEVICE_KEY, String(enrollment.device.device_id));
@@ -2395,6 +2408,7 @@ index 0000000..97ff48c
 +      selectedTeam: selectedTeam,
 +      trustedHttpsUrl: trustedHttpsUrl,
 +      rawErrorMessage: rawErrorMessage,
++      desktopPlatform: desktopPlatform,
 +      desktopVersionIssue: desktopVersionIssue,
 +      recentSuccessfulUpload: recentSuccessfulUpload,
 +      desktopTelegramBind: desktopTelegramBind,
