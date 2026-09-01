@@ -16,7 +16,7 @@ function response(body, status = 200) {
   };
 }
 
-function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }) {
+function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true, platform = 'Win32' }) {
   const values = new Map(Object.entries(initialStorage));
   const listeners = new Map();
   const alerts = [];
@@ -52,6 +52,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
       setItem(key, value) { values.set(key, String(value)); },
       removeItem(key) { values.delete(key); },
     },
+    navigator: { platform },
     fetch,
     confirm,
     alert(message) { alerts.push(String(message)); },
@@ -76,6 +77,19 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true }
     get reloads() { return reloads; },
   };
 }
+
+test('Claritide branding and platform detection cover all desktop packages', () => {
+  const source = fs.readFileSync(bridgePath, 'utf8');
+  assert.match(source, /mark\.textContent = 'C'/);
+
+  const base = {
+    invoke: async () => null,
+    fetch: async () => response({}),
+  };
+  assert.equal(loadBridge({ ...base, platform: 'Win32' }).bridge.desktopPlatform(), 'Windows');
+  assert.equal(loadBridge({ ...base, platform: 'MacIntel' }).bridge.desktopPlatform(), 'macOS');
+  assert.equal(loadBridge({ ...base, platform: 'Linux x86_64' }).bridge.desktopPlatform(), 'Linux');
+});
 
 test('cold logged-out startup clears an existing native identity', async () => {
   const calls = [];
