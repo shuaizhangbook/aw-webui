@@ -2,11 +2,11 @@
 
 A web-based UI for ActivityWatch, built with Vue.js
 
-## SeeSeeYou desktop distribution
+## Claritide desktop distribution
 
-This fork also builds the branded SeeSeeYou Windows desktop client. The native
+This fork also builds the branded Claritide Windows desktop client. The native
 process keeps ActivityWatch collection on `localhost:5600`, while the main
-window loads the complete SeeSeeYou employee workspace from
+window loads the complete Claritide employee workspace from
 `https://watch.sding.me/admin/my-day/`. A minimal, origin-restricted Tauri
 bridge handles system-browser Google sign-in and automatic device enrollment;
 the remote workspace cannot choose another sync server or local activity API.
