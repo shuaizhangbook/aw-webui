@@ -1,0 +1,139 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const test = require('node:test');
+const vm = require('node:vm');
+
+const bridgePath = process.env.CLARITIDE_AGENT_BRIDGE_PATH;
+if (!bridgePath) {
+  throw new Error('CLARITIDE_AGENT_BRIDGE_PATH must point to agent_workbench_bridge.js');
+}
+
+function loadBridge(invoke) {
+  let intervalCallback = null;
+  let cleared = false;
+  const window = {
+    __CLARITIDE_AGENT_BRIDGE_TEST_MODE__: true,
+    __TAURI_INTERNALS__: { invoke },
+    location: {
+      protocol: 'claritide-agent:',
+      hostname: 'localhost',
+      port: '',
+    },
+    setInterval(callback) { intervalCallback = callback; return 7; },
+    clearInterval(id) { assert.equal(id, 7); cleared = true; },
+  };
+  window.top = window;
+  const context = { window, console, Date, Error, Object, Promise, Set, TypeError };
+  vm.runInNewContext(fs.readFileSync(bridgePath, 'utf8'), context, { filename: bridgePath });
+  return {
+    window,
+    bridge: window.__CLARITIDE_CCB__,
+    testApi: window.__CLARITIDE_AGENT_BRIDGE_TEST__,
+    runInterval() { return intervalCallback && intervalCallback(); },
+    get cleared() { return cleared; },
+  };
+}
+
+test('local bridge exposes the capability-v1 surface', async () => {
+  const calls = [];
+  const harness = loadBridge(async (command, args) => {
+    calls.push([command, args]);
+    if (command === 'agent_get_status') {
+      return { allowedModels: ['default', 'gpt-test'], sessions: [{ sessionId: 'one' }] };
+    }
+    return null;
+  });
+
+  assert.equal(harness.bridge.capabilityVersion, 1);
+  assert.deepEqual(await harness.bridge.listModels(), ['default', 'gpt-test']);
+  assert.deepEqual(await harness.bridge.listSessions(), [{ sessionId: 'one' }]);
+  await harness.bridge.selectWorkspace();
+  await harness.bridge.startSession({ clientSessionId: 'id', workspace: 'opaque' });
+  await harness.bridge.send({ sessionId: 'id', content: 'hello' });
+  await harness.bridge.stop({ sessionId: 'id' });
+  await harness.bridge.close({ sessionId: 'id' });
+  assert.deepEqual(
+    calls.map(([command]) => command),
+    [
+      'agent_get_status',
+      'agent_get_status',
+      'agent_select_workspace',
+      'agent_start',
+      'agent_send',
+      'agent_interrupt',
+      'agent_close',
+    ],
+  );
+  assert.equal(Object.getOwnPropertyDescriptor(harness.window, '__CLARITIDE_CCB__').writable, false);
+});
+
+test('event subscription polls normalized events and stops after unsubscribe', async () => {
+  let polls = 0;
+  const harness = loadBridge(async command => {
+    if (command !== 'agent_poll_events') return null;
+    polls += 1;
+    return [{
+      eventId: 1,
+      sessionId: 'session-one',
+      type: 'text_delta',
+      timestampMs: 10,
+      payload: { text: 'hello' },
+    }];
+  });
+  const events = [];
+  const unsubscribe = harness.bridge.onEvent(event => events.push(event));
+  await harness.testApi.poll();
+  assert.ok(polls >= 1);
+  assert.equal(events.at(-1).type, 'text_delta');
+  unsubscribe();
+  assert.equal(harness.testApi.handlerCount(), 0);
+  assert.equal(harness.cleared, true);
+});
+
+test('resume is explicit unsupported capability', async () => {
+  const harness = loadBridge(async () => null);
+  await assert.rejects(
+    harness.bridge.resume({ sessionId: 'one' }),
+    error => error && error.code === 'unsupported',
+  );
+});
+
+test('bridge does not initialize without Tauri internals', () => {
+  const window = {
+    location: { protocol: 'claritide-agent:', hostname: 'localhost', port: '' },
+    setInterval() {},
+    clearInterval() {},
+  };
+  window.top = window;
+  vm.runInNewContext(fs.readFileSync(bridgePath, 'utf8'), { window, console });
+  assert.equal(window.__CLARITIDE_CCB__, undefined);
+});
+
+test('bridge refuses remote, port-bearing, and subframe origins', () => {
+  const source = fs.readFileSync(bridgePath, 'utf8');
+  for (const candidate of [
+    { protocol: 'https:', hostname: 'watch.sding.me', port: '' },
+    { protocol: 'http:', hostname: 'claritide-agent.localhost', port: '8765' },
+  ]) {
+    const window = {
+      location: candidate,
+      __TAURI_INTERNALS__: { invoke: async () => null },
+      setInterval() {},
+      clearInterval() {},
+    };
+    window.top = window;
+    vm.runInNewContext(source, { window, console });
+    assert.equal(window.__CLARITIDE_CCB__, undefined);
+  }
+
+  const top = {};
+  const window = {
+    top,
+    location: { protocol: 'claritide-agent:', hostname: 'localhost', port: '' },
+    __TAURI_INTERNALS__: { invoke: async () => null },
+    setInterval() {},
+    clearInterval() {},
+  };
+  vm.runInNewContext(source, { window, console });
+  assert.equal(window.__CLARITIDE_CCB__, undefined);
+});

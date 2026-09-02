@@ -1,0 +1,183 @@
+name: Agent runtime POC
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/agent-runtime-ci.yml'
+      - 'desktop/AGENT_RUNTIME_POC.md'
+      - 'desktop/patches/aw-tauri-seeseeyou.patch'
+      - 'desktop/tests/agent_workbench_bridge.test.cjs'
+      - 'desktop/tests/agent_workbench_html.test.cjs'
+      - 'desktop/tests/seeseeyou_bridge.test.cjs'
+      - 'desktop/tests/fixtures/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-runtime-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-agent-runtime:
+    name: Patch, bridge, Rust, and ACL tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the Claritide web UI
+        uses: actions/checkout@v7
+        with:
+          path: custom-webui
+
+      - name: Check out the pinned desktop engine
+        run: |
+          git clone https://github.com/ActivityWatch/activitywatch.git activitywatch
+          git -C activitywatch checkout 115e49e111cd0a248be6230680544235ae3a5a8e
+          git -C activitywatch submodule update --init --recursive
+          test "$(git -C activitywatch/aw-tauri rev-parse HEAD)" = \
+            "f70bcdf913db3e1648b99ba459538469f744cd26"
+
+      - name: Clean-apply the Claritide desktop patch
+        run: |
+          git -C activitywatch/aw-tauri apply --check --unidiff-zero \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
+          git -C activitywatch/aw-tauri apply --unidiff-zero \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Test isolated JavaScript bridges
+        run: |
+          node --check activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js
+          node --check activitywatch/aw-tauri/src-tauri/src/agent_workbench_bridge.js
+          SEESEEYOU_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js" \
+            node --test custom-webui/desktop/tests/seeseeyou_bridge.test.cjs
+          CLARITIDE_AGENT_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/agent_workbench_bridge.js" \
+            node --test custom-webui/desktop/tests/agent_workbench_bridge.test.cjs
+          CLARITIDE_AGENT_HTML_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html" \
+            node --test custom-webui/desktop/tests/agent_workbench_html.test.cjs
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          html = Path(
+              'activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html'
+          ).read_text()
+          scripts = re.findall(r'<script>(.*?)</script>', html, re.DOTALL)
+          assert len(scripts) == 1
+          Path(os.environ['RUNNER_TEMP'], 'agent-workbench-inline.js').write_text(scripts[0])
+          PY
+          node --check "$RUNNER_TEMP/agent-workbench-inline.js"
+
+      - name: Verify source capability separation
+        run: |
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path('activitywatch/aw-tauri/src-tauri')
+          remote = json.loads((root / 'capabilities/seeseeyou-remote.json').read_text())
+          local = json.loads((root / 'capabilities/agent-workbench.json').read_text())
+          remote_permissions = set(remote['permissions'])
+          local_permissions = set(local['permissions'])
+          agent_runtime = {
+              'allow-agent-get-status',
+              'allow-agent-select-workspace',
+              'allow-agent-start',
+              'allow-agent-send',
+              'allow-agent-interrupt',
+              'allow-agent-close',
+              'allow-agent-poll-events',
+          }
+          assert remote['local'] is False
+          assert remote['remote']['urls'] == [
+              'https://watch.sding.me',
+              'https://watch.sding.me/*',
+          ]
+          assert 'allow-open-agent-workbench' in remote_permissions
+          assert remote_permissions.isdisjoint(agent_runtime)
+          assert local['local'] is True
+          assert local['windows'] == ['agent-workbench']
+          assert agent_runtime <= local_permissions
+
+          build = (root / 'build.rs').read_text()
+          lib = (root / 'src/lib.rs').read_text()
+          assert 'AppManifest::new().commands' in build
+          declared_block = re.search(
+              r'const APP_COMMANDS: &\[&str\] = &\[(.*?)\];', build, re.DOTALL
+          ).group(1)
+          declared = set(re.findall(r'"([a-z0-9_]+)"', declared_block))
+          handler_block = re.search(
+              r'tauri::generate_handler!\[(.*?)\]', lib, re.DOTALL
+          ).group(1)
+          registered = {
+              item.strip().split('::')[-1]
+              for item in handler_block.split(',')
+              if item.strip()
+          }
+          assert declared == registered, (declared - registered, registered - declared)
+          PY
+
+      - name: Install Linux Tauri dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            libssl-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: activitywatch/aw-tauri/src-tauri -> target
+
+      - name: Test and check the desktop adapter
+        working-directory: activitywatch/aw-tauri/src-tauri
+        env:
+          AW_WEBUI_DIR: ${{ github.workspace }}/custom-webui
+        run: |
+          cargo fmt -- --check
+          cargo test --lib --locked
+          cargo check --locked
+
+      - name: Verify compiled Tauri access control
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          schema_dir = Path('activitywatch/aw-tauri/src-tauri/gen/schemas')
+          capabilities = json.loads((schema_dir / 'capabilities.json').read_text())
+          remote = capabilities['seeseeyou-remote']
+          local = capabilities['agent-workbench']
+          assert 'allow-open-agent-workbench' in remote['permissions']
+          assert 'allow-agent-start' not in remote['permissions']
+          assert 'allow-agent-send' not in remote['permissions']
+          assert local['local'] is True
+          assert 'allow-agent-start' in local['permissions']
+          assert 'allow-agent-send' in local['permissions']
+
+          manifests = json.loads((schema_dir / 'acl-manifests.json').read_text())
+          permissions = manifests['__app-acl__']['permissions']
+          assert permissions['allow-open-agent-workbench']['commands']['allow'] == [
+              'open_agent_workbench'
+          ]
+          assert permissions['allow-agent-start']['commands']['allow'] == ['agent_start']
+          assert permissions['allow-agent-send']['commands']['allow'] == ['agent_send']
+          PY

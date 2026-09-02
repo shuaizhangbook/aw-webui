@@ -72,6 +72,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true, 
   vm.runInNewContext(fs.readFileSync(bridgePath, 'utf8'), context, { filename: bridgePath });
   return {
     bridge: window.__SEESEEYOU_BRIDGE_TEST__,
+    agentDesktop: window.__CLARITIDE_AGENT_DESKTOP__,
     storage: values,
     alerts,
     get reloads() { return reloads; },
@@ -89,6 +90,22 @@ test('Claritide branding and platform detection cover all desktop packages', () 
   assert.equal(loadBridge({ ...base, platform: 'Win32' }).bridge.desktopPlatform(), 'Windows');
   assert.equal(loadBridge({ ...base, platform: 'MacIntel' }).bridge.desktopPlatform(), 'macOS');
   assert.equal(loadBridge({ ...base, platform: 'Linux x86_64' }).bridge.desktopPlatform(), 'Linux');
+});
+
+test('remote workspace receives only the isolated agent-window opener', async () => {
+  const calls = [];
+  const harness = loadBridge({
+    invoke: async (command, args) => { calls.push([command, args]); },
+    fetch: async () => response({}),
+  });
+  assert.deepEqual(Object.keys(harness.agentDesktop), ['capabilityVersion', 'openWorkbench']);
+  assert.equal(harness.agentDesktop.capabilityVersion, 1);
+  await harness.agentDesktop.openWorkbench();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'open_agent_workbench');
+  assert.deepEqual(Object.keys(calls[0][1]), []);
+  assert.equal(harness.agentDesktop.startSession, undefined);
+  assert.equal(harness.agentDesktop.selectWorkspace, undefined);
 });
 
 test('cold logged-out startup clears an existing native identity', async () => {
