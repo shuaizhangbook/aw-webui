@@ -2,7 +2,7 @@
 /* eslint jest/no-test-callback: "off" */
 /* eslint jest/expect-expect: "off" */
 
-import { Selector } from 'testcafe';
+import { ClientFunction, Selector } from 'testcafe';
 import { RequestLogger } from 'testcafe';
 
 const MAX_REFRESH = 2; // the max number of times to refresh if "Loading..." dosent go away
@@ -119,31 +119,20 @@ test.clientScripts({
   // TODO: resize to mobile size and take another screenshot
 });
 
-fixture(`Timeline view`).page(`${baseURL}/#/timeline`).requestHooks(HTTPLogger);
+fixture(`Removed Timeline route`).page(`${baseURL}/#/timeline`).requestHooks(HTTPLogger);
+
+const getLocationHash = ClientFunction(() => window.location.hash);
 
 test.clientScripts({
   content: logJsErrorCode,
-})('Screenshot the timeline view', async t => {
+})('Redirect the removed timeline view to My Day', async t => {
+  await t.expect(getLocationHash()).eql('#/my-day');
   await hide_devonly(t);
   await t.takeScreenshot({
-    path: 'timeline-initial.png',
-    fullPage: true,
-  });
-  await waitForLoading(t);
-  await t
-    .click(Selector('label').withText('12h'))
-    .expect(Selector('input[value="43200"]').checked)
-    .eql(true);
-
-  await t.takeScreenshot({
-    path: 'timeline.png',
+    path: 'timeline-redirect.png',
     fullPage: true,
   });
   await checkNoError(t);
-
-  // Debugging
-  // console.log(await t.getBrowserConsoleMessages());
-  // console.log(JSON.stringify(HTTPLogger.requests, null, '\t'));
 });
 
 fixture(`Buckets view`).page(`${baseURL}/#/buckets/`).requestHooks(HTTPLogger);
