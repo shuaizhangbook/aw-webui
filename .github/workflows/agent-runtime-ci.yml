@@ -51,6 +51,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Generate upstream Tauri icons
+        working-directory: activitywatch/aw-tauri
+        run: |
+          npm ci
+          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
+
       - name: Test isolated JavaScript bridges
         run: |
           node --check activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js

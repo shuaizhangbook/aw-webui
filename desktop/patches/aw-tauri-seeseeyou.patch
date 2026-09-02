@@ -982,7 +982,7 @@ index 0000000..eec1a21
 +commands.allow = ["trigger_sync_now"]
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
 new file mode 100644
-index 0000000..2db4fe1
+index 0000000..5dc39a1
 --- /dev/null
 +++ b/src-tauri/src/agent_runtime.rs
 @@ -0,0 +1,2028 @@
@@ -2894,7 +2894,7 @@ index 0000000..2db4fe1
 +    #[test]
 +    fn bounded_reader_rejects_oversized_and_truncated_lines() {
 +        let mut output = Vec::new();
-+        read_bounded_lines(b"12345\nok", 4, |line| output.push(line));
++        read_bounded_lines(&b"12345\nok"[..], 4, |line| output.push(line));
 +        assert_eq!(output, vec![BoundedLine::Oversized]);
 +    }
 +
