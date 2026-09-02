@@ -180,20 +180,38 @@ jobs:
     - name: Print server logs to console
       if: ${{ always() }}
       shell: bash
-      run:
-        for file in ~/.cache/activitywatch/log/*/*.log; do echo $file; cat $file; echo; done
+      run: |
+        shopt -s nullglob
+        log_files=(~/.cache/activitywatch/log/*/*.log)
+        if ((${#log_files[@]} == 0)); then
+          echo "No ActivityWatch server logs were produced."
+        else
+          for file in "${log_files[@]}"; do
+            echo "$file"
+            cat "$file"
+            echo
+          done
+        fi
     - name: Move logs to subdir
       # Run this step even if e2e tests flag failure
       if: ${{ always() }}
+      shell: bash
       env:
         aw_server: ${{ matrix.aw-server }}
         aw_version: ${{ matrix.aw-version }}
       run: |
-        mkdir -p logs/dist/$aw_server/$aw_version
-        mv ~/.cache/activitywatch/log/*/*.log logs/dist/$aw_server/$aw_version
+        mkdir -p "logs/dist/$aw_server/$aw_version"
+        shopt -s nullglob
+        log_files=(~/.cache/activitywatch/log/*/*.log)
+        if ((${#log_files[@]} == 0)); then
+          echo "No ActivityWatch server logs to collect."
+        else
+          mv "${log_files[@]}" "logs/dist/$aw_server/$aw_version/"
+        fi
     - name: Upload logs
       if: ${{ always() }}
       uses: actions/upload-artifact@v7
       with:
         name: logs-${{ matrix.aw-server }}-${{ matrix.aw-version }}
         path: logs/dist/*
+        if-no-files-found: ignore
