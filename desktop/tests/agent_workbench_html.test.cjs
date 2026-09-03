@@ -36,15 +36,18 @@ test('same-window navigation and return are explicit', () => {
   assert.doesNotMatch(html, /window\.open\(/);
 });
 
-test('model and permission controls include a guarded full-access choice', () => {
+test('model and permission controls enable guarded session-scoped full access', () => {
   assert.match(html, /id="topModel"/);
   assert.match(html, /id="bottomModel"/);
   assert.match(html, /value="controlled">受控访问/);
   assert.match(html, /value="readonly">只读访问/);
   assert.match(html, /value="full">完全访问/);
   assert.match(html, /id="fullAccessModal"/);
-  assert.match(html, /当前安全运行时未开放完全访问，未执行授权/);
-  assert.doesNotMatch(html, /bypassPermissions|dangerously-skip-permissions/);
+  assert.match(html, /真实权限绕过模式/);
+  assert.match(html, /仅本会话授权/);
+  assert.match(html, /permission:session\.permission/);
+  assert.match(html, /if\(session\.permission==='full'\)session\.permission='controlled'/);
+  assert.match(html, /fullAccessGrants/);
 });
 
 test('runtime-controlled and user-controlled values use textContent', () => {
