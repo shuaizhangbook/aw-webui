@@ -260,6 +260,10 @@ jobs:
         run: |
           source venv/Scripts/activate
           make package TAURI_BUILD=true
+          cp -R aw-tauri/src-tauri/agent-runtime dist/activitywatch/agent-runtime
+          test -f dist/activitywatch/agent-runtime/manifest.json
+          test -f dist/activitywatch/agent-runtime/ccb/dist/cli-node.js
+          test -f dist/activitywatch/agent-runtime/node/node.exe
           cp ../seeseeyou/admin/client/dist/seeseeyou-sync.exe dist/activitywatch/seeseeyou-sync.exe
           rm -f dist/*.zip dist/*-setup.exe
           bash scripts/package/package-all.sh
