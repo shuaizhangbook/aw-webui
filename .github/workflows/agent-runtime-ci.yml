@@ -9,6 +9,8 @@ on:
       - 'desktop/patches/aw-tauri-seeseeyou.patch'
       - 'desktop/patches/aw-tauri-agent-same-window.patch'
       - 'desktop/patches/aw-tauri-agent-full-access.patch'
+      - 'desktop/patches/aw-tauri-agent-bundled-runtime.patch'
+      - 'desktop/scripts/prepare-ccb-runtime.sh'
       - 'desktop/workbench/**'
       - 'desktop/tests/agent_workbench_bridge.test.cjs'
       - 'desktop/tests/agent_workbench_html.test.cjs'
@@ -56,6 +58,10 @@ jobs:
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-full-access.patch"
           git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-full-access.patch"
+          git -C activitywatch/aw-tauri apply --check \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-bundled-runtime.patch"
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-bundled-runtime.patch"
           cmp custom-webui/desktop/workbench/agent-workbench.html \
             activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html
           cmp custom-webui/desktop/workbench/agent_workbench_bridge.js \
@@ -140,6 +146,11 @@ jobs:
           assert '"bypassPermissions".to_string()' in runtime
           assert '"--dangerously-skip-permissions".to_string()' in runtime
           assert 'AgentPermissionMode::Full' in runtime
+          assert 'RuntimeSource::Bundled' in runtime
+          assert 'join("agent-runtime")' in runtime
+          assert 'join("cli-node.js")' in runtime
+          config = json.loads((root / 'tauri.conf.json').read_text())
+          assert 'agent-runtime/**/*' in config['bundle']['resources']
           declared_block = re.search(
               r'const APP_COMMANDS: &\[&str\] = &\[(.*?)\];', build, re.DOTALL
           ).group(1)
