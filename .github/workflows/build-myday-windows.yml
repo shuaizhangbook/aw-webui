@@ -142,7 +142,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CLARITIDE_CCB_REVISION"
           bun install --frozen-lockfile
           bun run build
-          "$GITHUB_WORKSPACE/custom-webui/desktop/scripts/prepare-ccb-runtime.sh" \
+          bash "$GITHUB_WORKSPACE/custom-webui/desktop/scripts/prepare-ccb-runtime.sh" \
             "$GITHUB_WORKSPACE/ccb" \
             "$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri" \
             "$CLARITIDE_CCB_REVISION" \
