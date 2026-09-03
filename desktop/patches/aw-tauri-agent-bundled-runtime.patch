@@ -14,7 +14,7 @@ index 0000000..b832f15
 +
 +Do not commit runtime binaries or API credentials here.
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
-index 695d355..ba37347 100644
+index 695d355..505c83f 100644
 --- a/src-tauri/src/agent_runtime.rs
 +++ b/src-tauri/src/agent_runtime.rs
 @@ -1,10 +1,11 @@
@@ -182,7 +182,24 @@ index 695d355..ba37347 100644
      let model = request.model.unwrap_or_else(|| config.models[0].clone());
      if !config.models.iter().any(|allowed| allowed == &model) {
          return Err("The requested model is not in the local development allowlist".to_string());
-@@ -1927,6 +1990,20 @@ mod tests {
+@@ -1842,11 +1905,13 @@ pub fn close_all() {
+ #[cfg(test)]
+ mod tests {
+     use super::{
+-        advance_seq, mismatched_session_id, new_uuid_v4, normalize_ndjson_line, read_bounded_lines,
+-        remember_protocol_id, result_fallback_text, runtime_args, user_message, valid_model_id,
+-        valid_session_id, AgentPermissionMode, BoundedLine, ToolsMode,
++        advance_seq, bundled_runtime_paths, mismatched_session_id, new_uuid_v4,
++        normalize_ndjson_line, read_bounded_lines, remember_protocol_id, result_fallback_text,
++        runtime_args, user_message, valid_model_id, valid_session_id, AgentPermissionMode,
++        BoundedLine, ToolsMode,
+     };
+     use std::collections::{HashSet, VecDeque};
++    use std::path::Path;
+ 
+     #[test]
+     fn validates_session_and_model_ids_without_accepting_cli_tokens() {
+@@ -1927,6 +1992,20 @@ mod tests {
          assert_ne!(one, two);
      }
  
