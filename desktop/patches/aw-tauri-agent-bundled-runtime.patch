@@ -14,7 +14,7 @@ index 0000000..b832f15
 +
 +Do not commit runtime binaries or API credentials here.
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
-index 695d355..f495bc7 100644
+index 695d355..ba37347 100644
 --- a/src-tauri/src/agent_runtime.rs
 +++ b/src-tauri/src/agent_runtime.rs
 @@ -1,10 +1,11 @@
@@ -73,7 +73,7 @@ index 695d355..f495bc7 100644
      tools_mode: String,
      allowed_models: Vec<String>,
      capabilities: AgentCapabilities,
-@@ -367,19 +385,54 @@ fn allowed_models() -> Result<Vec<String>, String> {
+@@ -367,19 +385,57 @@ fn allowed_models() -> Result<Vec<String>, String> {
      Ok(models)
  }
  
@@ -87,7 +87,10 @@ index 695d355..f495bc7 100644
 -        .transpose()?;
 +fn bundled_runtime_paths(resource_dir: &Path) -> (PathBuf, PathBuf) {
 +    #[cfg(target_os = "windows")]
-+    let executable = resource_dir.join("agent-runtime").join("node").join("node.exe");
++    let executable = resource_dir
++        .join("agent-runtime")
++        .join("node")
++        .join("node.exe");
 +    #[cfg(not(target_os = "windows"))]
 +    let executable = resource_dir
 +        .join("agent-runtime")
@@ -136,7 +139,7 @@ index 695d355..f495bc7 100644
      })
  }
  
-@@ -1390,8 +1443,8 @@ fn runtime_args(
+@@ -1390,8 +1446,8 @@ fn runtime_args(
  }
  
  #[tauri::command]
@@ -147,7 +150,7 @@ index 695d355..f495bc7 100644
      let tools_mode = config
          .as_ref()
          .map(|config| config.tools_mode.as_str().to_string())
-@@ -1425,6 +1478,10 @@ pub fn agent_get_status() -> AgentStatus {
+@@ -1425,6 +1481,10 @@ pub fn agent_get_status() -> AgentStatus {
          capability_version: CAPABILITY_VERSION,
          available: config.is_ok(),
          runtime: "ccb",
@@ -158,7 +161,7 @@ index 695d355..f495bc7 100644
          tools_mode,
          allowed_models,
          capabilities: AgentCapabilities {
-@@ -1491,7 +1548,10 @@ pub async fn agent_select_workspace(app: AppHandle) -> Result<Option<AgentWorksp
+@@ -1491,7 +1551,10 @@ pub async fn agent_select_workspace(app: AppHandle) -> Result<Option<AgentWorksp
  }
  
  #[tauri::command]
@@ -170,7 +173,7 @@ index 695d355..f495bc7 100644
      if !valid_session_id(&request.client_session_id) {
          return Err("clientSessionId must be a UUID".to_string());
      }
-@@ -1503,7 +1563,7 @@ pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, Str
+@@ -1503,7 +1566,7 @@ pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, Str
      }) {
          return Err("Invalid locale".to_string());
      }
@@ -179,7 +182,7 @@ index 695d355..f495bc7 100644
      let model = request.model.unwrap_or_else(|| config.models[0].clone());
      if !config.models.iter().any(|allowed| allowed == &model) {
          return Err("The requested model is not in the local development allowlist".to_string());
-@@ -1927,6 +1987,26 @@ mod tests {
+@@ -1927,6 +1990,20 @@ mod tests {
          assert_ne!(one, two);
      }
  
@@ -188,15 +191,9 @@ index 695d355..f495bc7 100644
 +        let resource_dir = Path::new("/opt/claritide/resources");
 +        let (executable, entrypoint) = bundled_runtime_paths(resource_dir);
 +        #[cfg(target_os = "windows")]
-+        assert_eq!(
-+            executable,
-+            resource_dir.join("agent-runtime/node/node.exe")
-+        );
++        assert_eq!(executable, resource_dir.join("agent-runtime/node/node.exe"));
 +        #[cfg(not(target_os = "windows"))]
-+        assert_eq!(
-+            executable,
-+            resource_dir.join("agent-runtime/node/bin/node")
-+        );
++        assert_eq!(executable, resource_dir.join("agent-runtime/node/bin/node"));
 +        assert_eq!(
 +            entrypoint,
 +            resource_dir.join("agent-runtime/ccb/dist/cli-node.js")
