@@ -8,6 +8,7 @@ on:
       - 'desktop/AGENT_RUNTIME_POC.md'
       - 'desktop/patches/aw-tauri-seeseeyou.patch'
       - 'desktop/patches/aw-tauri-agent-same-window.patch'
+      - 'desktop/patches/aw-tauri-agent-full-access.patch'
       - 'desktop/workbench/**'
       - 'desktop/tests/agent_workbench_bridge.test.cjs'
       - 'desktop/tests/agent_workbench_html.test.cjs'
@@ -51,6 +52,10 @@ jobs:
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-same-window.patch"
           git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-same-window.patch"
+          git -C activitywatch/aw-tauri apply --check \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-full-access.patch"
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-full-access.patch"
           cmp custom-webui/desktop/workbench/agent-workbench.html \
             activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html
           cmp custom-webui/desktop/workbench/agent_workbench_bridge.js \
@@ -126,11 +131,15 @@ jobs:
           build = (root / 'build.rs').read_text()
           lib = (root / 'src/lib.rs').read_text()
           workbench = (root / 'src/agent_workbench.rs').read_text()
+          runtime = (root / 'src/agent_runtime.rs').read_text()
           assert '.navigate(url)' in workbench
           assert 'WebviewWindowBuilder' not in workbench
           assert 'main_navigation_allowed' in lib
           assert 'initialization_script(include_str!("agent_workbench_bridge.js"))' in lib
           assert 'AppManifest::new().commands' in build
+          assert '"bypassPermissions".to_string()' in runtime
+          assert '"--dangerously-skip-permissions".to_string()' in runtime
+          assert 'AgentPermissionMode::Full' in runtime
           declared_block = re.search(
               r'const APP_COMMANDS: &\[&str\] = &\[(.*?)\];', build, re.DOTALL
           ).group(1)
