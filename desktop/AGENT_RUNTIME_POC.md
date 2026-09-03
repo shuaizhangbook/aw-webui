@@ -1,14 +1,25 @@
-# Claritide agent runtime POC
+# Claritide agent runtime
 
-This phase adds a local, isolated adapter for a developer-supplied CCB runtime. It does not bundle CCB, does not change ActivityWatch collection or sync behavior, and does not store an API key in this repository.
+Claritide packages CCB and a pinned Node.js runtime as local Tauri resources. The adapter does not change ActivityWatch collection or sync behavior and does not store an API key in this repository. System-administration provider configuration remains a separate, deferred phase.
+
+## Packaged runtime
+
+The packaging workflows build CCB revision `77a7934e15d69da13879112ed7db695c9ee7a52a`, copy its complete `dist` tree, and bundle Node.js `22.23.2`. At runtime Claritide resolves these files beneath the Tauri resource directory:
+
+| Platform | Node.js executable | CCB entrypoint |
+| --- | --- | --- |
+| Windows | `agent-runtime/node/node.exe` | `agent-runtime/ccb/dist/cli-node.js` |
+| macOS/Linux | `agent-runtime/node/bin/node` | `agent-runtime/ccb/dist/cli-node.js` |
+
+`desktop/scripts/prepare-ccb-runtime.sh` verifies the exact CCB commit and Node.js version, rejects symlinks in the CCB output, writes a non-secret runtime manifest, and runs the bundled CLI's version command before packaging. The source snapshot does not include a root redistribution license, so the manifest marks these packages for internal testing and requires a license review before external distribution.
 
 ## Development configuration
 
-Configure the desktop process with these four environment variables before launching Claritide:
+Packaged builds do not require executable or entrypoint variables. Developers may configure the desktop process with these environment variables to override the bundled runtime before launching Claritide:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `CLARITIDE_AGENT_EXECUTABLE` | Yes | Absolute path to the runtime executable, such as Node.js or a standalone CCB binary. The path is canonicalized and must be a file. |
+| `CLARITIDE_AGENT_EXECUTABLE` | No | Absolute path to the runtime executable, such as Node.js or a standalone CCB binary. When present, it overrides the bundled runtime. The path is canonicalized and must be a file. |
 | `CLARITIDE_AGENT_ENTRYPOINT` | No | Absolute path to the CCB JavaScript entrypoint when the executable is Node.js. Omit it for a standalone binary. |
 | `CLARITIDE_AGENT_ALLOWED_MODELS` | No | Comma-separated model allowlist. Defaults to `default`; at most 16 IDs are accepted. |
 | `CLARITIDE_AGENT_TOOLS_MODE` | No | Tool scope used by controlled sessions: `disabled` (default) or `readonly`. Read-only mode exposes only `Read,Glob,Grep`; it does not pre-approve tools. Explicitly confirmed full-access sessions ignore this restriction and use CCB's default production tool set. |
@@ -29,11 +40,11 @@ export ANTHROPIC_BASE_URL=https://your-trusted-relay.example
 
 In `--bare` mode CCB authenticates with `ANTHROPIC_API_KEY` (or the selected provider's explicit environment mechanism), not its OAuth/keychain state. A relay can receive prompts, model output, and workspace context, so only configure an endpoint you trust and are authorized to use.
 
-The adapter was audited against the CCB protocol at revision `77a7934`. Changing the external runtime revision requires rerunning the stream-JSON fixtures and argument audit.
+The adapter was audited against the CCB protocol at revision `77a7934`. Changing the packaged or external runtime revision requires rerunning the stream-JSON fixtures and argument audit.
 
 ## Use and lifecycle
 
-1. Start Claritide with the variables above.
+1. Start a packaged Claritide build, or start a development build with the override variables above.
 2. From the authenticated Claritide workspace, open the AI Workbench. The main window navigates to the bundled local Workbench instead of opening a second window. The remote page can only call `window.__CLARITIDE_AGENT_DESKTOP__.openWorkbench()`.
 3. In the bundled local Workbench, create a project with the native folder picker, create a project-scoped conversation, choose an allowlisted model and a permission mode, then start and send a prompt. Project names, paths, conversations, and transcript text are stored locally; the native workspace handle must be granted again after an app restart.
 4. **Stop turn** sends CCB's structured `interrupt` control request and keeps the session process available until its result settles.
