@@ -1,0 +1,460 @@
+diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
+index d41cf66..02afc65 100644
+--- a/src-tauri/assets/agent-workbench.html
++++ b/src-tauri/assets/agent-workbench.html
+@@ -1,206 +1,135 @@
+ <!doctype html>
+-<html lang="en">
++<html lang="zh-CN">
+ <head>
+   <meta charset="utf-8">
+-  <meta name="viewport" content="width=device-width, initial-scale=1">
++  <meta name="viewport" content="width=device-width,initial-scale=1">
+   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://ipc.localhost;">
+-  <title>Claritide AI Workbench</title>
++  <title>Claritide · AI 工作台</title>
+   <style>
+-    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+-    * { box-sizing: border-box; }
+-    body { margin: 0; background: #0b1020; color: #e8edf8; }
+-    main { width: min(980px, calc(100% - 32px)); margin: 24px auto; display: grid; gap: 16px; }
+-    header, section { border: 1px solid #26324d; border-radius: 14px; background: #11182a; padding: 16px; }
+-    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+-    h1 { font-size: 20px; margin: 0 0 4px; }
+-    p { color: #9eabc4; margin: 0; font-size: 13px; }
+-    .status { border-radius: 999px; padding: 6px 10px; background: #26324d; font-size: 12px; }
+-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+-    button, select, textarea { border: 1px solid #344365; border-radius: 9px; background: #172139; color: inherit; padding: 9px 11px; }
+-    button { cursor: pointer; }
+-    button.primary { background: #4569e8; border-color: #4569e8; }
+-    button:disabled { cursor: not-allowed; opacity: .5; }
+-    textarea { width: 100%; min-height: 100px; resize: vertical; margin: 12px 0; }
+-    #workspace { color: #b8c4db; font-size: 13px; overflow-wrap: anywhere; }
+-    #answer { min-height: 120px; white-space: pre-wrap; line-height: 1.55; }
+-    #events { max-height: 220px; overflow: auto; margin: 0; padding-left: 20px; color: #9eabc4; font: 12px/1.5 ui-monospace, monospace; }
+-    .error { color: #ff9b9b; }
++    :root{font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:#17332f;background:#f5f8f7;--ink:#17332f;--muted:#657a76;--dim:#8a9a97;--line:#dce8e5;--strong:#c7dad6;--surface:#fff;--soft:#f8fbfa;--mint:#0d8f85;--mint-dark:#08746d;--mint-soft:#e8f7f4;--mint-line:#b6e0da;--red:#b44952;--red-soft:#fff1f2;--amber:#8b621e;--amber-soft:#fff7e7;--blue:#346e9d;--blue-soft:#eef6fc;--shadow:0 16px 42px rgba(22,59,53,.12)}
++    *{box-sizing:border-box}html,body{width:100%;min-width:920px;height:100%;margin:0}body{overflow:hidden;background:#f5f8f7;color:var(--ink);font-size:14px}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(13,143,133,.2);outline-offset:2px}[hidden]{display:none!important}
++    .app{height:100vh;display:grid;grid-template-rows:68px minmax(0,1fr) 28px}.topbar{margin:10px 12px 0;display:grid;grid-template-columns:minmax(220px,1fr) auto minmax(220px,1fr);align-items:center;gap:18px;padding:0 18px;border:1px solid var(--line);border-radius:14px 14px 0 0;background:var(--surface)}.brand{display:flex;align-items:center;gap:10px}.brand-mark{width:38px;height:38px;display:grid;place-items:center;border-radius:10px;background:var(--mint);color:#fff;font-size:20px;font-weight:800}.brand-title{font-weight:800}.brand-sub{margin-top:3px;color:var(--muted);font-size:11px}.nav{display:flex;gap:6px}.nav button{height:38px;padding:0 13px;border:0;border-radius:9px;background:transparent;font-weight:650;white-space:nowrap}.nav button:hover{background:var(--soft)}.nav .active{position:relative;padding-left:25px;background:var(--mint-soft);color:var(--mint-dark)}.nav .active:before{content:"";position:absolute;left:12px;top:50%;width:6px;height:6px;border-radius:50%;background:var(--mint);transform:translateY(-50%)}.top-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px}.runtime-pill{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 10px;border:1px solid var(--mint-line);border-radius:999px;background:var(--mint-soft);color:var(--mint-dark);font-size:11px;font-weight:700}.plain{height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
++    .workspace{min-height:0;margin:0 12px;display:grid;grid-template-columns:294px minmax(480px,1fr) 360px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}.sidebar,.center,.activity{min-height:0}.sidebar{display:grid;grid-template-rows:auto auto minmax(0,1fr);border-right:1px solid var(--line);background:#fbfdfc}.sidebar-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:13px}.btn{min-height:36px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 12px;border-radius:8px;font-weight:650}.btn.primary{border:1px solid var(--mint);background:var(--mint);color:#fff}.btn.primary:hover{background:var(--mint-dark)}.btn.secondary{border:1px solid var(--strong);background:var(--surface)}.btn.secondary:hover{border-color:var(--mint-line);background:var(--mint-soft);color:var(--mint-dark)}.btn.ghost{border:1px solid transparent;background:transparent;color:var(--muted)}.btn.danger{border:1px solid #e7b3b8;background:var(--surface);color:var(--red)}.btn:disabled{cursor:not-allowed;opacity:.48}.search{margin:0 13px 12px;width:calc(100% - 26px);height:38px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.project-scroll{min-height:0;overflow:auto;padding:0 8px 16px}.section-label{padding:5px 10px 8px;color:var(--muted);font-size:11px;font-weight:700}.empty-projects{margin:18px 10px;padding:16px;border:1px dashed var(--strong);border-radius:10px;color:var(--muted);font-size:12px;line-height:1.6;text-align:center}.project-row{width:100%;min-height:55px;display:grid;grid-template-columns:10px minmax(0,1fr) auto;align-items:center;gap:9px;padding:8px 10px;border:0;border-radius:9px;background:transparent;text-align:left}.project-row:hover{background:#f2f7f5}.project-row.active{background:var(--mint-soft)}.project-dot{width:8px;height:8px;border-radius:3px;background:var(--mint)}.project-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}.project-path{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:10px}.chevron{color:var(--dim)}.session-list{margin:0 6px 8px 14px;padding-left:16px;border-left:1px solid var(--line)}.session-row{width:100%;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 9px;border:0;border-radius:8px;background:transparent;text-align:left}.session-row:hover{background:#f2f7f5}.session-row.active{background:#dff3ef;color:var(--mint-dark)}.session-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.session-time{color:var(--dim);font-size:10px}
++    .center{display:grid;grid-template-rows:64px minmax(0,1fr) auto;background:var(--surface)}.session-toolbar{display:grid;grid-template-columns:minmax(200px,1fr) auto;align-items:center;gap:12px;padding:8px 15px;border-bottom:1px solid var(--line)}.session-heading strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.session-meta{margin-top:4px;color:var(--muted);font-size:10px}.toolbar-controls{display:flex;gap:6px}.compact{height:32px;max-width:145px;padding:0 25px 0 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface);font-size:11px}.conversation{min-height:0;overflow:auto;background:#fcfefd}.welcome{height:100%;display:grid;place-items:center;padding:36px;text-align:center}.welcome-card{max-width:520px}.welcome-mark{width:50px;height:50px;display:grid;place-items:center;margin:0 auto 15px;border-radius:14px;background:var(--mint-soft);color:var(--mint-dark);font-size:24px;font-weight:800}.welcome h1{margin:0 0 8px;font-size:20px}.welcome p{margin:0;color:var(--muted);line-height:1.7}.message{display:grid;grid-template-columns:34px minmax(0,1fr);gap:11px;padding:17px 18px;border-bottom:1px solid #edf3f1}.message.user{background:var(--surface)}.avatar{width:32px;height:32px;display:grid;place-items:center;border-radius:9px;background:var(--mint);color:#fff;font-size:11px;font-weight:800}.message.user .avatar{border:1px solid var(--mint-line);background:var(--mint-soft);color:var(--mint-dark)}.message-head{display:flex;align-items:center;gap:8px;margin:0 0 6px}.message-head strong{font-size:12px}.message-head span{color:var(--dim);font-size:10px}.message-body{max-width:760px;white-space:pre-wrap;overflow-wrap:anywhere;color:#29443f;line-height:1.7}.run-card{margin-top:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}.run-head{min-height:42px;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--line);font-weight:700}.pulse{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 4px var(--mint-soft)}.run-head small{margin-left:auto;color:var(--dim);font-weight:500}.event-list{max-height:220px;overflow:auto}.event-row{display:grid;grid-template-columns:74px minmax(0,1fr);gap:8px;padding:9px 11px;border-bottom:1px solid #f0f4f3;color:var(--muted);font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}.event-row strong{color:var(--ink);font-family:Inter,"PingFang SC",system-ui,sans-serif}.permission-card{margin:11px;padding:12px;border:1px solid #b9d8e9;border-radius:9px;background:var(--blue-soft);color:#416781;font-size:12px;line-height:1.55}.permission-card strong{display:block;margin-bottom:4px;color:#315f86}.permission-card .actions{display:flex;justify-content:flex-end;gap:7px;margin-top:10px}.permission-card .actions button{min-height:32px;font-size:11px}
++    .composer-area{padding:11px 15px 13px;border-top:1px solid var(--line)}.composer{border:1px solid var(--strong);border-radius:10px;background:var(--surface)}.composer:focus-within{border-color:var(--mint);box-shadow:0 0 0 3px rgba(13,143,133,.08)}.composer textarea{width:100%;min-height:72px;max-height:150px;resize:none;padding:11px 12px 4px;border:0;outline:0;background:transparent;line-height:1.55}.composer-row{display:flex;align-items:center;gap:7px;padding:0 8px 8px}.composer-row small{color:var(--dim)}.spacer{flex:1}.composer-settings{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:7px;padding-top:8px}.field label{display:block;margin-bottom:4px;color:var(--dim);font-size:9px}.field select{width:100%;height:35px;padding:0 24px 0 8px;border:1px solid var(--line);border-radius:7px;background:var(--soft);font-size:11px}
++    .activity{display:grid;grid-template-rows:55px 42px minmax(0,1fr);border-left:1px solid var(--line);background:var(--surface)}.activity.closed{display:none}.activity-head{display:flex;align-items:center;gap:8px;padding:0 13px;border-bottom:1px solid var(--line)}.activity-head small{color:var(--dim)}.activity-head button{margin-left:auto}.tabs{display:flex;gap:18px;padding:0 13px;border-bottom:1px solid var(--line)}.tab{height:42px;padding:0 3px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-size:11px;font-weight:650}.tab.active{border-bottom-color:var(--mint);color:var(--mint-dark)}.activity-body{min-height:0;overflow:auto}.activity-empty{padding:28px 18px;color:var(--muted);font-size:12px;line-height:1.65;text-align:center}.log-item{padding:11px 13px;border-bottom:1px solid #edf3f1}.log-item strong{display:block;margin-bottom:4px;font-size:11px}.log-item p{margin:0;color:var(--muted);font-size:10px;line-height:1.55;overflow-wrap:anywhere}.statusbar{display:flex;align-items:center;gap:10px;padding:0 14px;border-top:1px solid var(--line);background:#f8fbfa;color:var(--muted);font-size:10px}.statusbar .end{margin-left:auto}
++    .modal-backdrop{position:fixed;inset:0;z-index:50;display:none;place-items:center;padding:22px;background:rgba(19,45,41,.36)}.modal-backdrop.open{display:grid}.modal{width:min(470px,100%);max-height:calc(100vh - 44px);overflow:auto;border:1px solid var(--strong);border-radius:13px;background:var(--surface);box-shadow:var(--shadow)}.modal header{display:flex;align-items:center;justify-content:space-between;padding:15px 17px;border-bottom:1px solid var(--line)}.modal h2{margin:0;font-size:16px}.modal-body{padding:16px 17px}.modal-copy{margin:0 0 13px;color:var(--muted);font-size:11px;line-height:1.65}.form-field{margin-bottom:13px}.form-field label{display:block;margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:650}.form-field input,.form-field select{width:100%;height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.warning{padding:12px;border:1px solid #ecd3a4;border-radius:9px;background:var(--amber-soft);color:#75561e;font-size:11px;line-height:1.65}.modal footer{display:flex;justify-content:flex-end;gap:8px;padding:11px 17px 15px}.toast{position:fixed;left:50%;bottom:37px;z-index:80;padding:9px 13px;border:1px solid var(--mint-line);border-radius:8px;background:var(--surface);box-shadow:var(--shadow);color:var(--mint-dark);font-size:11px;font-weight:700;transform:translate(-50%,16px);opacity:0;pointer-events:none;transition:150ms}.toast.visible{transform:translate(-50%,0);opacity:1}
++    @media(max-width:1180px){.workspace{grid-template-columns:260px minmax(430px,1fr) 320px}.topbar{grid-template-columns:200px 1fr 190px}.nav button{padding-inline:9px}.nav .active{padding-left:21px}.nav .active:before{left:9px}}
+   </style>
+ </head>
+ <body>
+-  <main>
+-    <header>
+-      <div><h1>Claritide AI Workbench</h1><p>Local agent runtime proof of concept</p></div>
+-      <span class="status" id="status">Checking runtime…</span>
++  <div class="app">
++    <header class="topbar">
++      <div class="brand"><div class="brand-mark">C</div><div><div class="brand-title">Claritide</div><div class="brand-sub">工作空间 · 本地 Agent</div></div></div>
++      <nav class="nav" aria-label="主导航"><button data-return>我的今天</button><button data-return>团队工作</button><button data-return>日历会议</button><button data-return>日报</button><button class="active" aria-current="page">AI 工作台</button></nav>
++      <div class="top-actions"><span class="runtime-pill" id="runtimeStatus">正在检查运行时</span><button class="plain" data-return>返回工作空间</button></div>
+     </header>
+-    <section>
+-      <div class="row">
+-        <button id="choose">Choose workspace</button>
+-        <select id="model" aria-label="Model"></select>
+-      </div>
+-      <div id="workspace">No workspace selected.</div>
+-      <textarea id="prompt" placeholder="Describe the task…"></textarea>
+-      <div class="row">
+-        <button class="primary" id="send" disabled>Start and send</button>
+-        <button id="stop" disabled>Stop turn</button>
+-        <button id="close" disabled>Close session</button>
+-      </div>
+-    </section>
+-    <section><div id="answer">Agent output will appear here.</div></section>
+-    <section><ol id="events"></ol></section>
+-  </main>
++    <main class="workspace" id="workspaceGrid">
++      <aside class="sidebar" aria-label="项目与会话">
++        <div class="sidebar-actions"><button class="btn primary" id="newProject">新建项目</button><button class="btn secondary" id="newSession" disabled>新建会话</button></div>
++        <input class="search" id="search" type="search" placeholder="搜索项目或会话" aria-label="搜索项目或会话">
++        <div class="project-scroll" id="projectList"><div class="section-label">我的项目</div><div class="empty-projects" id="projectEmpty">先创建项目并选择本地文件夹。<br>会话会保存在对应项目中。</div></div>
++      </aside>
++      <section class="center">
++        <div class="session-toolbar"><div class="session-heading"><strong id="sessionHeading">AI 工作台</strong><div class="session-meta" id="sessionMeta">请选择项目并创建会话</div></div><div class="toolbar-controls"><select class="compact" id="topModel" aria-label="模型"><option>default</option></select><select class="compact" id="topPermission" aria-label="权限模式"><option value="controlled">受控访问</option><option value="readonly">只读访问</option><option value="full">完全访问</option></select><button class="plain" id="toggleActivity">运行记录</button></div></div>
++        <div class="conversation" id="conversation"><div class="welcome" id="welcome"><div class="welcome-card"><div class="welcome-mark">AI</div><h1>从一个项目开始</h1><p>选择真实文件夹，创建项目，再把每次 Agent 对话放进项目中。模型、工作目录和权限都在会话开始前确认。</p></div></div></div>
++        <div class="composer-area"><div class="composer"><textarea id="prompt" placeholder="描述要完成的任务；Enter 换行，Ctrl + Enter 发送" disabled></textarea><div class="composer-row"><small id="composerHint">尚未选择项目会话</small><span class="spacer"></span><button class="btn secondary" id="stop" disabled>停止</button><button class="btn primary" id="send" disabled>发送指令</button></div></div><div class="composer-settings"><div class="field"><label for="runLocation">运行位置</label><select id="runLocation" disabled><option>Local 当前目录</option></select></div><div class="field"><label for="bottomModel">模型</label><select id="bottomModel" disabled><option>default</option></select></div><div class="field"><label for="bottomPermission">权限模式</label><select id="bottomPermission" disabled><option value="controlled">受控访问</option><option value="readonly">只读访问</option><option value="full">完全访问</option></select></div></div></div>
++      </section>
++      <aside class="activity" id="activityPanel" aria-label="运行记录"><div class="activity-head"><strong>运行记录</strong><small id="eventCount">0 条</small><button class="plain" id="closeActivity">收起</button></div><div class="tabs"><button class="tab active" data-tab="events">事件</button><button class="tab" data-tab="changes">变更</button></div><div class="activity-body" id="eventsView"><div class="activity-empty" id="eventEmpty">Agent 的读取、分析、工具请求和完成状态会显示在这里。</div><div id="eventLog"></div></div><div class="activity-body" id="changesView" hidden><div class="activity-empty">当前安全运行时暂不提供文件变更明细。启用可审查的写入工具后，这里会展示 diff、测试结果与接受/撤销操作。</div></div></aside>
++    </main>
++    <footer class="statusbar"><span id="workspaceStatus">未绑定本地项目</span><span class="end" id="turnStatus">等待开始</span></footer>
++  </div>
++
++  <div class="modal-backdrop" id="projectModal" role="dialog" aria-modal="true" aria-labelledby="projectTitle"><section class="modal"><header><h2 id="projectTitle">创建本地项目</h2><button class="plain" data-close="projectModal">关闭</button></header><div class="modal-body"><p class="modal-copy">项目绑定真实文件夹。Claritide 只把本次由系统文件选择器授权的目录交给本地 Agent。</p><div class="form-field"><label for="projectName">项目名称</label><input id="projectName" maxlength="80" placeholder="例如：Claritide 桌面端"></div><div class="form-field"><label>本地文件夹</label><input id="projectPath" readonly placeholder="尚未选择"></div><button class="btn secondary" id="chooseFolder">选择文件夹</button></div><footer><button class="btn secondary" data-close="projectModal">取消</button><button class="btn primary" id="createProject" disabled>创建项目</button></footer></section></div>
++
++  <div class="modal-backdrop" id="sessionModal" role="dialog" aria-modal="true" aria-labelledby="sessionTitle"><section class="modal"><header><h2 id="sessionTitle">在项目中创建会话</h2><button class="plain" data-close="sessionModal">关闭</button></header><div class="modal-body"><div class="form-field"><label for="sessionProject">项目</label><select id="sessionProject"></select></div><div class="form-field"><label for="sessionName">会话名称</label><input id="sessionName" maxlength="100" placeholder="例如：检查桌面端发布流程"></div><div class="form-field"><label for="sessionModel">模型</label><select id="sessionModel"><option>default</option></select></div><div class="form-field"><label for="sessionPermission">权限</label><select id="sessionPermission"><option value="controlled">受控访问</option><option value="readonly">只读访问</option><option value="full">完全访问</option></select></div></div><footer><button class="btn secondary" data-close="sessionModal">取消</button><button class="btn primary" id="createSession">创建并进入</button></footer></section></div>
++
++  <div class="modal-backdrop" id="fullAccessModal" role="alertdialog" aria-modal="true" aria-labelledby="fullAccessTitle"><section class="modal"><header><h2 id="fullAccessTitle">授予完全访问？</h2><button class="plain" id="cancelFullAccessTop">关闭</button></header><div class="modal-body"><div class="warning"><strong>这是高风险权限。</strong><br>完全访问意味着 Agent 可以在项目目录写入文件并执行命令。当前安全运行时尚未开放这一能力；确认后会检查本地运行时支持情况，不支持时不会降级绕过。</div></div><footer><button class="btn secondary" id="cancelFullAccess">取消</button><button class="btn danger" id="confirmFullAccess">仅本会话授权</button></footer></section></div>
++  <div class="toast" id="toast" role="status" aria-live="polite"></div>
++
+   <script>
+-    (function () {
++    (function(){
+       'use strict';
+-      var bridge = window.__CLARITIDE_CCB__;
+-      var statusNode = document.getElementById('status');
+-      var workspaceNode = document.getElementById('workspace');
+-      var modelNode = document.getElementById('model');
+-      var promptNode = document.getElementById('prompt');
+-      var answerNode = document.getElementById('answer');
+-      var eventsNode = document.getElementById('events');
+-      var chooseButton = document.getElementById('choose');
+-      var sendButton = document.getElementById('send');
+-      var stopButton = document.getElementById('stop');
+-      var closeButton = document.getElementById('close');
+-      var workspace = null;
+-      var sessionId = '';
+-      var provisionalText = '';
+-      var runtimeAvailable = false;
+-      var turnActive = false;
+-      var stopPending = false;
+-      var MAX_RENDER_TEXT_CHARS = 256 * 1024;
+-      var MAX_RENDER_EVENTS = 200;
++      var WORKSPACE_URL='https://watch.sding.me/';
++      var STORAGE_KEY='claritide.agent.projects.v1';
++      var bridge=window.__CLARITIDE_CCB__;
++      var state={projects:[],activeProjectId:'',activeSessionId:'',nativeSessionId:'',turnActive:false,status:null,pendingWorkspace:null,previousPermission:'controlled'};
++      var $=function(selector,root){return (root||document).querySelector(selector)};
++      var $$=function(selector,root){return Array.prototype.slice.call((root||document).querySelectorAll(selector))};
++      var toastTimer;
+ 
+-      if (!bridge) {
+-        statusNode.textContent = 'Native bridge unavailable';
+-        statusNode.className = 'status error';
+-        Array.prototype.forEach.call(document.querySelectorAll('button, select, textarea'), function (control) {
+-          control.disabled = true;
+-        });
+-        return;
+-      }
++      function uid(prefix){return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)}
++      function safeText(value){return String(value==null?'':value)}
++      function showToast(message){var node=$('#toast');node.textContent=message;node.classList.add('visible');window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){node.classList.remove('visible')},2200)}
++      function openModal(id){$('#'+id).classList.add('open')}
++      function closeModal(id){$('#'+id).classList.remove('open')}
++      function load(){try{var parsed=JSON.parse(window.localStorage.getItem(STORAGE_KEY)||'[]');state.projects=Array.isArray(parsed)?parsed:[]}catch(_error){state.projects=[]}}
++      function save(){window.localStorage.setItem(STORAGE_KEY,JSON.stringify(state.projects.map(function(project){return{id:project.id,name:project.name,path:project.path,sessions:project.sessions||[]}})))}
++      function activeProject(){return state.projects.find(function(project){return project.id===state.activeProjectId})||null}
++      function activeSession(){var project=activeProject();return project&&(project.sessions||[]).find(function(session){return session.id===state.activeSessionId})||null}
++      function formatTime(value){try{return new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(_error){return''}}
+ 
+-      function addEvent(event) {
+-        var item = document.createElement('li');
+-        item.textContent = event.type + (event.payload && event.payload.message ? ': ' + event.payload.message : '');
+-        if (event.type === 'error') item.className = 'error';
+-        eventsNode.appendChild(item);
+-        while (eventsNode.childNodes.length > MAX_RENDER_EVENTS) {
+-          eventsNode.removeChild(eventsNode.firstChild);
+-        }
+-        eventsNode.scrollTop = eventsNode.scrollHeight;
++      function renderProjects(){
++        var host=$('#projectList');$$('.project',host).forEach(function(node){node.remove()});
++        $('#projectEmpty').hidden=state.projects.length>0;
++        var query=$('#search').value.trim().toLowerCase();
++        state.projects.forEach(function(project){
++          var searchable=(project.name+' '+project.path+' '+(project.sessions||[]).map(function(item){return item.name}).join(' ')).toLowerCase();
++          if(query&&searchable.indexOf(query)<0)return;
++          var section=document.createElement('section');section.className='project';
++          var row=document.createElement('button');row.className='project-row'+(project.id===state.activeProjectId?' active':'');row.type='button';
++          var dot=document.createElement('span');dot.className='project-dot';var copy=document.createElement('span');var name=document.createElement('span');name.className='project-name';name.textContent=project.name;var path=document.createElement('span');path.className='project-path';path.textContent=project.path;copy.appendChild(name);copy.appendChild(path);var arrow=document.createElement('span');arrow.className='chevron';arrow.textContent=project.id===state.activeProjectId?'收起':'展开';row.appendChild(dot);row.appendChild(copy);row.appendChild(arrow);
++          row.addEventListener('click',function(){state.activeProjectId=project.id;state.activeSessionId='';renderProjects();syncControls()});section.appendChild(row);
++          if(project.id===state.activeProjectId){var list=document.createElement('div');list.className='session-list';(project.sessions||[]).forEach(function(session){var button=document.createElement('button');button.className='session-row'+(session.id===state.activeSessionId?' active':'');button.type='button';var title=document.createElement('span');title.className='session-title';title.textContent=session.name;var time=document.createElement('span');time.className='session-time';time.textContent=formatTime(session.updatedAt);button.appendChild(title);button.appendChild(time);button.addEventListener('click',function(event){event.stopPropagation();selectSession(project.id,session.id)});list.appendChild(button)});section.appendChild(list)}
++          host.appendChild(section)
++        });
++        refreshProjectSelect();
+       }
+ 
+-      function boundedText(value) {
+-        var text = String(value || '');
+-        if (text.length <= MAX_RENDER_TEXT_CHARS) return text;
+-        return '[Earlier output omitted]\n' + text.slice(-(MAX_RENDER_TEXT_CHARS - 25));
++      function refreshProjectSelect(){var select=$('#sessionProject');select.textContent='';state.projects.forEach(function(project){var option=document.createElement('option');option.value=project.id;option.textContent=project.name;select.appendChild(option)});if(state.activeProjectId)select.value=state.activeProjectId}
++      function fillModels(models){['#topModel','#bottomModel','#sessionModel'].forEach(function(selector){var select=$(selector),current=select.value;select.textContent='';(models.length?models:['default']).forEach(function(model){var option=document.createElement('option');option.value=model;option.textContent=model;select.appendChild(option)});if(models.indexOf(current)>=0)select.value=current})}
++      function syncControls(){
++        var project=activeProject(),session=activeSession(),ready=Boolean(project&&session),runtimeReady=Boolean(state.status&&state.status.available);
++        $('#newSession').disabled=!project;$('#prompt').disabled=!ready||!runtimeReady;$('#send').disabled=!ready||!runtimeReady||state.turnActive;$('#stop').disabled=!state.turnActive;$('#runLocation').disabled=!ready;$('#bottomModel').disabled=!ready||state.nativeSessionId;$('#bottomPermission').disabled=!ready||state.nativeSessionId;
++        $('#sessionHeading').textContent=session?project.name+' / '+session.name:'AI 工作台';$('#sessionMeta').textContent=session?project.path:'请选择项目并创建会话';$('#composerHint').textContent=!runtimeReady?'运行时未配置':ready?'Ctrl + Enter 发送':'尚未选择项目会话';$('#workspaceStatus').textContent=project?project.path:'未绑定本地项目';$('#turnStatus').textContent=state.turnActive?'Agent 正在执行':state.nativeSessionId?'会话已就绪':'等待开始';
++        if(session){$('#topModel').value=session.model;$('#bottomModel').value=session.model;$('#topPermission').value=session.permission;$('#bottomPermission').value=session.permission}
+       }
+ 
+-      function setTurnState(active, stopping) {
+-        turnActive = Boolean(active);
+-        stopPending = turnActive && Boolean(stopping);
+-        stopButton.disabled = !turnActive || stopPending;
+-        closeButton.disabled = !sessionId;
+-        chooseButton.disabled = Boolean(sessionId);
+-        modelNode.disabled = Boolean(sessionId);
+-        sendButton.disabled = !runtimeAvailable || !workspace || turnActive;
+-        sendButton.textContent = sessionId ? 'Send' : 'Start and send';
+-      }
++      function clearConversation(){var host=$('#conversation');host.textContent=''}
++      function renderConversation(){var session=activeSession();clearConversation();if(!session){var welcome=document.createElement('div');welcome.className='welcome';welcome.innerHTML='<div class="welcome-card"><div class="welcome-mark">AI</div><h1>从一个项目开始</h1><p>选择真实文件夹，创建项目，再把每次 Agent 对话放进项目中。模型、工作目录和权限都在会话开始前确认。</p></div>';$('#conversation').appendChild(welcome);return}(session.messages||[]).forEach(function(message){appendMessage(message.role,message.text,message.time,false)});$('#conversation').scrollTop=$('#conversation').scrollHeight}
++      function appendMessage(role,text,time,persist){var article=document.createElement('article');article.className='message '+(role==='user'?'user':'agent');var avatar=document.createElement('div');avatar.className='avatar';avatar.textContent=role==='user'?'我':'AI';var content=document.createElement('div');var head=document.createElement('div');head.className='message-head';var author=document.createElement('strong');author.textContent=role==='user'?'我':'Claritide Agent';var stamp=document.createElement('span');stamp.textContent=formatTime(time||Date.now());head.appendChild(author);head.appendChild(stamp);var body=document.createElement('div');body.className='message-body';body.textContent=safeText(text);content.appendChild(head);content.appendChild(body);article.appendChild(avatar);article.appendChild(content);$('#conversation').appendChild(article);if(persist){var session=activeSession();session.messages=session.messages||[];session.messages.push({role:role,text:safeText(text),time:time||Date.now()});session.updatedAt=Date.now();save()}return body}
++      function addEvent(kind,detail){$('#eventEmpty').hidden=true;var item=document.createElement('div');item.className='log-item';var title=document.createElement('strong');title.textContent=kind;var copy=document.createElement('p');copy.textContent=safeText(detail);item.appendChild(title);item.appendChild(copy);$('#eventLog').appendChild(item);var count=$$('#eventLog .log-item').length;$('#eventCount').textContent=count+' 条';$('#eventsView').scrollTop=$('#eventsView').scrollHeight}
+ 
+-      async function refreshStatus() {
+-        try {
+-          var status = await bridge.getStatus();
+-          statusNode.textContent = status.available
+-            ? 'CCB ready · tools ' + status.toolsMode
+-            : 'Runtime not configured';
+-          statusNode.title = status.lastError || '';
+-          runtimeAvailable = Boolean(status.available);
+-          modelNode.textContent = '';
+-          (status.allowedModels || ['default']).forEach(function (model) {
+-            var option = document.createElement('option');
+-            option.value = model;
+-            option.textContent = model;
+-            modelNode.appendChild(option);
+-          });
+-          setTurnState(turnActive, stopPending);
+-        } catch (error) {
+-          runtimeAvailable = false;
+-          statusNode.textContent = 'Bridge unavailable';
+-          statusNode.title = String(error);
+-          setTurnState(turnActive, stopPending);
+-        }
+-      }
++      function selectSession(projectId,sessionId){if(state.turnActive){showToast('请先停止当前执行');return}state.activeProjectId=projectId;state.activeSessionId=sessionId;state.nativeSessionId='';renderProjects();renderConversation();syncControls()}
++      async function chooseWorkspace(){if(!bridge)return showToast('本地桥接不可用');try{var workspace=await bridge.selectWorkspace();if(!workspace)return;state.pendingWorkspace=workspace;$('#projectPath').value=workspace.path||workspace.name||'';if(!$('#projectName').value)$('#projectName').value=workspace.name||'新项目';$('#createProject').disabled=false}catch(error){showToast('选择文件夹失败：'+safeText(error&&error.message||error))}}
++      function createProject(){var workspace=state.pendingWorkspace,name=$('#projectName').value.trim();if(!workspace||!name)return;var project={id:uid('project'),name:name,path:workspace.path,nativeWorkspace:workspace,sessions:[]};state.projects.unshift(project);state.activeProjectId=project.id;state.activeSessionId='';save();closeModal('projectModal');renderProjects();syncControls();openSessionModal();showToast('项目已创建，请创建第一个会话')}
++      function openSessionModal(){var project=activeProject();if(!project)return showToast('请先创建或选择项目');refreshProjectSelect();$('#sessionProject').value=project.id;$('#sessionName').value='';$('#sessionModel').value=$('#topModel').value||'default';$('#sessionPermission').value='controlled';openModal('sessionModal');$('#sessionName').focus()}
++      function createSession(){var projectId=$('#sessionProject').value,project=state.projects.find(function(item){return item.id===projectId}),name=$('#sessionName').value.trim();if(!project||!name)return showToast('请选择项目并填写会话名称');var permission=$('#sessionPermission').value;if(permission==='full'){state.previousPermission='controlled';openModal('fullAccessModal');return}var session={id:uid('session'),name:name,model:$('#sessionModel').value||'default',permission:permission,updatedAt:Date.now(),messages:[]};project.sessions=project.sessions||[];project.sessions.unshift(session);state.activeProjectId=project.id;state.activeSessionId=session.id;state.nativeSessionId='';save();closeModal('sessionModal');renderProjects();renderConversation();syncControls();showToast('会话已创建')}
++      function setPermission(value){var session=activeSession();if(!session)return;if(value==='full'){state.previousPermission=session.permission;openModal('fullAccessModal');return}session.permission=value;save();$('#topPermission').value=value;$('#bottomPermission').value=value;showToast('权限模式已更新')}
++      function confirmFullAccess(){closeModal('fullAccessModal');$('#sessionPermission').value='controlled';syncControls();showToast('当前安全运行时未开放完全访问，未执行授权')}
+ 
+-      bridge.onEvent(function (event) {
+-        addEvent(event);
+-        if (sessionId && event.sessionId && event.sessionId !== sessionId) return;
+-        if (event.type === 'text_delta') {
+-          if (answerNode.textContent === 'Agent output will appear here.') answerNode.textContent = '';
+-          provisionalText = boundedText(provisionalText + (event.payload.text || ''));
+-          answerNode.textContent = provisionalText;
+-        } else if (event.type === 'assistant_final') {
+-          provisionalText = boundedText(event.payload.text || provisionalText);
+-          answerNode.textContent = provisionalText;
+-        } else if (event.type === 'turn_completed') {
+-          setTurnState(false, false);
+-        } else if (event.type === 'stopped') {
+-          setTurnState(Boolean(event.payload && event.payload.settling), true);
+-        } else if (event.type === 'error' && event.payload && event.payload.terminal === true) {
+-          setTurnState(false, false);
+-        }
+-      });
++      async function ensureNativeSession(){if(state.nativeSessionId)return state.nativeSessionId;var project=activeProject(),session=activeSession();if(!project||!session)throw new Error('未选择项目会话');if(!project.nativeWorkspace){var workspace=await bridge.selectWorkspace();if(!workspace)throw new Error('需要重新授权项目文件夹');project.nativeWorkspace=workspace;project.path=workspace.path||project.path;save();renderProjects()}var id=crypto.randomUUID();await bridge.startSession({clientSessionId:id,workspace:project.nativeWorkspace.id,model:session.model,locale:'zh-CN'});state.nativeSessionId=id;syncControls();return id}
++      async function send(){var value=$('#prompt').value.trim();if(!value||state.turnActive)return;try{var id=await ensureNativeSession();appendMessage('user',value,Date.now(),true);$('#prompt').value='';state.turnActive=true;syncControls();addEvent('开始任务',value);await bridge.send({sessionId:id,content:value})}catch(error){state.turnActive=false;syncControls();showToast('发送失败：'+safeText(error&&error.message||error));addEvent('错误',safeText(error&&error.message||error))}}
++      async function stop(){if(!state.nativeSessionId||!state.turnActive)return;try{await bridge.stop({sessionId:state.nativeSessionId});showToast('已发送停止请求')}catch(error){showToast('停止失败：'+safeText(error&&error.message||error))}}
++      async function returnToWorkspace(){if(state.nativeSessionId){try{await bridge.close({sessionId:state.nativeSessionId})}catch(_error){}}window.location.assign(WORKSPACE_URL)}
+ 
+-      document.getElementById('choose').addEventListener('click', async function () {
+-        workspace = await bridge.selectWorkspace();
+-        workspaceNode.textContent = workspace ? workspace.path : 'No workspace selected.';
+-        setTurnState(turnActive, stopPending);
+-      });
++      function handleEvent(event){if(state.nativeSessionId&&event.sessionId&&event.sessionId!==state.nativeSessionId)return;var payload=event.payload||{};if(event.type==='text_delta'){var last=$('#conversation .message.agent:last-child .message-body');if(!last){last=appendMessage('agent','',Date.now(),false)}last.textContent=safeText(last.textContent)+safeText(payload.text)}else if(event.type==='assistant_final'){var lastFinal=$('#conversation .message.agent:last-child .message-body');if(!lastFinal)lastFinal=appendMessage('agent','',Date.now(),false);lastFinal.textContent=safeText(payload.text||lastFinal.textContent);var session=activeSession();if(session){session.messages=session.messages||[];session.messages.push({role:'agent',text:lastFinal.textContent,time:Date.now()});session.updatedAt=Date.now();save()}}else if(event.type==='turn_completed'||(event.type==='error'&&payload.terminal===true)){state.turnActive=false;syncControls()}else if(event.type==='stopped'){state.turnActive=Boolean(payload.settling);syncControls()}var detail=payload.message||payload.text||payload.toolName||payload.code||event.type;addEvent(event.type,detail);$('#conversation').scrollTop=$('#conversation').scrollHeight}
+ 
+-      sendButton.addEventListener('click', async function () {
+-        var content = promptNode.value.trim();
+-        if (!workspace || !content || turnActive) return;
+-        var startingSession = !sessionId;
+-        if (startingSession) sessionId = crypto.randomUUID();
+-        setTurnState(true, false);
+-        try {
+-          if (startingSession) {
+-            await bridge.startSession({
+-              clientSessionId: sessionId,
+-              workspace: workspace.id,
+-              model: modelNode.value || 'default',
+-              locale: document.documentElement.lang || 'en'
+-            });
+-          }
+-          provisionalText = '';
+-          await bridge.send({ sessionId: sessionId, content: content });
+-          promptNode.value = '';
+-          setTurnState(true, false);
+-        } catch (error) {
+-          if (startingSession) sessionId = '';
+-          addEvent({ type: 'error', payload: { message: String(error) } });
+-          setTurnState(false, false);
+-        }
+-      });
++      function bind(){
++        $('#newProject').addEventListener('click',function(){state.pendingWorkspace=null;$('#projectName').value='';$('#projectPath').value='';$('#createProject').disabled=true;openModal('projectModal')});$('#chooseFolder').addEventListener('click',chooseWorkspace);$('#createProject').addEventListener('click',createProject);$('#newSession').addEventListener('click',openSessionModal);$('#createSession').addEventListener('click',createSession);$('#search').addEventListener('input',renderProjects);$('#send').addEventListener('click',send);$('#stop').addEventListener('click',stop);$('#prompt').addEventListener('keydown',function(event){if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();void send()}});
++        $('#topModel').addEventListener('change',function(event){var session=activeSession();if(session&&!state.nativeSessionId){session.model=event.target.value;$('#bottomModel').value=event.target.value;save()}});$('#bottomModel').addEventListener('change',function(event){$('#topModel').value=event.target.value;$('#topModel').dispatchEvent(new Event('change'))});$('#topPermission').addEventListener('change',function(event){setPermission(event.target.value)});$('#bottomPermission').addEventListener('change',function(event){setPermission(event.target.value)});
++        $('#cancelFullAccess').addEventListener('click',function(){closeModal('fullAccessModal');syncControls()});$('#cancelFullAccessTop').addEventListener('click',function(){closeModal('fullAccessModal');syncControls()});$('#confirmFullAccess').addEventListener('click',confirmFullAccess);$$('[data-close]').forEach(function(button){button.addEventListener('click',function(){closeModal(button.getAttribute('data-close'))})});$$('.modal-backdrop').forEach(function(backdrop){backdrop.addEventListener('click',function(event){if(event.target===backdrop)closeModal(backdrop.id)})});$$('[data-return]').forEach(function(button){button.addEventListener('click',returnToWorkspace)});
++        $('#closeActivity').addEventListener('click',function(){$('#activityPanel').classList.add('closed');$('#workspaceGrid').style.gridTemplateColumns='294px minmax(480px,1fr)'});$('#toggleActivity').addEventListener('click',function(){var panel=$('#activityPanel');panel.classList.toggle('closed');$('#workspaceGrid').style.gridTemplateColumns=panel.classList.contains('closed')?'294px minmax(480px,1fr)':''});$$('[data-tab]').forEach(function(button){button.addEventListener('click',function(){$$('[data-tab]').forEach(function(item){item.classList.toggle('active',item===button)});$('#eventsView').hidden=button.getAttribute('data-tab')!=='events';$('#changesView').hidden=button.getAttribute('data-tab')!=='changes'})})
++      }
+ 
+-      stopButton.addEventListener('click', async function () {
+-        if (!sessionId || !turnActive || stopPending) return;
+-        setTurnState(true, true);
+-        try {
+-          await bridge.stop({ sessionId: sessionId });
+-        } catch (error) {
+-          addEvent({ type: 'error', payload: { message: String(error) } });
+-          setTurnState(true, false);
+-        }
+-      });
+-      closeButton.addEventListener('click', async function () {
+-        if (!sessionId) return;
+-        await bridge.close({ sessionId: sessionId });
+-        sessionId = '';
+-        setTurnState(false, false);
+-      });
+-      void refreshStatus();
++      async function init(){
++        load();bind();renderProjects();renderConversation();
++        if(!bridge){$('#runtimeStatus').textContent='本地桥接不可用';syncControls();return}
++        bridge.onEvent(handleEvent);
++        try{state.status=await bridge.getStatus();$('#runtimeStatus').textContent=state.status.available?'Agent 已就绪 · '+state.status.toolsMode:'运行时未配置';fillModels(state.status.allowedModels||[])}catch(error){state.status={available:false};$('#runtimeStatus').textContent='运行时检查失败';addEvent('错误',safeText(error&&error.message||error))}
++        syncControls()
++      }
++      void init();
+     })();
+   </script>
+ </body>
+diff --git a/src-tauri/capabilities/agent-workbench.json b/src-tauri/capabilities/agent-workbench.json
+index 045b843..2590b2c 100644
+--- a/src-tauri/capabilities/agent-workbench.json
++++ b/src-tauri/capabilities/agent-workbench.json
+@@ -3,7 +3,7 @@
+   "identifier": "agent-workbench",
+   "description": "Local-only Claritide agent workbench with a narrow runtime API",
+   "windows": [
+-    "agent-workbench"
++    "main"
+   ],
+   "local": true,
+   "permissions": [
+diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
+index 585dbd4..feec3fa 100644
+--- a/src-tauri/src/agent_workbench.rs
++++ b/src-tauri/src/agent_workbench.rs
+@@ -1,60 +1,60 @@
+ use log::{info, warn};
+-use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
++use tauri::{AppHandle, Manager, Url};
+ 
+-pub const WINDOW_LABEL: &str = "agent-workbench";
++pub const WINDOW_LABEL: &str = "main";
+ pub const URI_SCHEME: &str = "claritide-agent";
+ pub const HTML: &str = include_str!("../assets/agent-workbench.html");
+ 
+-fn navigation_allowed(url: &Url) -> bool {
+-    url.port().is_none()
+-        && matches!(
+-            (url.scheme(), url.host_str()),
+-            (URI_SCHEME, Some("localhost")) | ("http", Some("claritide-agent.localhost"))
+-        )
++pub(crate) fn main_navigation_allowed(url: &Url) -> bool {
++    if url.port().is_some() {
++        return false;
++    }
++    matches!(
++        (url.scheme(), url.host_str()),
++        (URI_SCHEME, Some("localhost"))
++            | ("http", Some("claritide-agent.localhost"))
++            | ("https", Some("watch.sding.me"))
++    )
+ }
+ 
+ pub fn open(app: &AppHandle) -> Result<(), String> {
+-    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+-        window.show().map_err(|error| error.to_string())?;
+-        window.set_focus().map_err(|error| error.to_string())?;
+-        return Ok(());
+-    }
++    let window = app
++        .get_webview_window(WINDOW_LABEL)
++        .ok_or_else(|| "Claritide main window is unavailable".to_string())?;
+     let url = format!("{URI_SCHEME}://localhost/")
+         .parse()
+         .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
+-    WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::CustomProtocol(url))
+-        .title("Claritide AI Workbench")
+-        .inner_size(1080.0, 760.0)
+-        .min_inner_size(820.0, 600.0)
+-        .center()
+-        .visible(true)
+-        .initialization_script(include_str!("agent_workbench_bridge.js"))
+-        .on_navigation(navigation_allowed)
+-        .build()
++    window
++        .navigate(url)
+         .map_err(|error| format!("Unable to open Claritide AI Workbench: {error}"))?;
+-    info!("Opened isolated Claritide agent workbench");
++    window.show().map_err(|error| error.to_string())?;
++    window.set_focus().map_err(|error| error.to_string())?;
++    info!("Opened isolated Claritide agent workbench in the main window");
+     Ok(())
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::navigation_allowed;
++    use super::main_navigation_allowed;
+ 
+     #[test]
+-    fn workbench_navigation_never_allows_remote_content() {
+-        assert!(navigation_allowed(
++    fn main_window_navigation_allows_only_claritide_surfaces() {
++        assert!(main_navigation_allowed(
+             &"claritide-agent://localhost/".parse().unwrap()
+         ));
+-        assert!(navigation_allowed(
++        assert!(main_navigation_allowed(
+             &"http://claritide-agent.localhost/".parse().unwrap()
+         ));
+-        assert!(!navigation_allowed(
++        assert!(main_navigation_allowed(
+             &"https://watch.sding.me/admin/assistant/".parse().unwrap()
+         ));
+-        assert!(!navigation_allowed(
++        assert!(!main_navigation_allowed(
+             &"http://claritide-agent.localhost:8765/".parse().unwrap()
+         ));
+-        assert!(!navigation_allowed(
++        assert!(!main_navigation_allowed(
++            &"https://watch.sding.me.evil.example/".parse().unwrap()
++        ));
++        assert!(!main_navigation_allowed(
+             &"file:///tmp/index.html".parse().unwrap()
+         ));
+     }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 7809334..648836d 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -1737,9 +1737,8 @@ pub fn run() {
+                 .min_inner_size(920.0, 640.0)
+                 .visible(true)
+                 .initialization_script(include_str!("seeseeyou_bridge.js"))
+-                .on_navigation(|url| {
+-                    url.scheme() == "https" && url.host_str() == Some("watch.sding.me")
+-                })
++                .initialization_script(include_str!("agent_workbench_bridge.js"))
++                .on_navigation(agent_workbench::main_navigation_allowed)
+                 .build()
+                 .expect("Failed to create main window");
+ 
+@@ -1915,13 +1914,10 @@ pub fn run() {
+         .on_window_event(|window, event| {
+             if window.label() == "main" {
+                 if let tauri::WindowEvent::CloseRequested { api, .. } = &event {
++                    agent_runtime::close_all();
+                     api.prevent_close();
+                     window.hide().expect("Failed to hide main window");
+                 }
+-            } else if window.label() == agent_workbench::WINDOW_LABEL
+-                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+-            {
+-                agent_runtime::close_all();
+             }
+         })
+         .plugin(tauri_plugin_shell::init())
