@@ -64,7 +64,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$CLARITIDE_CCB_REVISION"
           bun install --frozen-lockfile
-          bun run build
+          bun run build:vite
           mkdir -p "$RUNNER_TEMP/src-tauri"
           bash "$GITHUB_WORKSPACE/custom-webui/desktop/scripts/prepare-ccb-runtime.sh" \
             "$GITHUB_WORKSPACE/ccb" \
