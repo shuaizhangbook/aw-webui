@@ -24,7 +24,7 @@
   }
 
   function unsupported(name) {
-    var error = new Error(name + ' is not supported by Claritide agent capability v1');
+    var error = new Error(name + ' is not supported by Claritide agent capability v2');
     error.code = 'unsupported';
     return Promise.reject(error);
   }
@@ -72,7 +72,7 @@
   }
 
   var bridge = Object.freeze({
-    capabilityVersion: 1,
+    capabilityVersion: 2,
     getStatus: function () {
       return invoke('agent_get_status');
     },
