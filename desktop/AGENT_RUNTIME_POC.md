@@ -34,10 +34,10 @@ The adapter was audited against the CCB protocol at revision `77a7934`. Changing
 ## Use and lifecycle
 
 1. Start Claritide with the variables above.
-2. From the authenticated Claritide workspace, open the AI Workbench. The remote window can only call `window.__CLARITIDE_AGENT_DESKTOP__.openWorkbench()`.
-3. In the bundled local Workbench, choose a workspace with the native folder picker, choose an allowlisted model, then start and send a prompt.
+2. From the authenticated Claritide workspace, open the AI Workbench. The main window navigates to the bundled local Workbench instead of opening a second window. The remote page can only call `window.__CLARITIDE_AGENT_DESKTOP__.openWorkbench()`.
+3. In the bundled local Workbench, create a project with the native folder picker, create a project-scoped conversation, choose an allowlisted model, then start and send a prompt. Project names, paths, conversations, and transcript text are stored locally; the native workspace handle must be granted again after an app restart.
 4. **Stop turn** sends CCB's structured `interrupt` control request and keeps the session process available until its result settles.
-5. **Close session** sends `end_session`; a runtime that does not exit is killed after three seconds. Closing the Workbench or quitting Claritide also terminates tracked runtime processes.
+5. Returning to the Claritide workspace sends `end_session` first; a runtime that does not exit is killed after three seconds. Hiding or quitting Claritide also terminates tracked runtime processes.
 
 The local page receives only opaque workspace IDs for start requests. It cannot provide a raw path, executable, arguments, or environment values to the native command.
 
@@ -45,13 +45,14 @@ The local page receives only opaque workspace IDs for start requests. It cannot 
 
 Every initial CCB process uses a fixed structured-I/O argument set including `--print`, `--bare`, `--setting-sources ""`, `--disable-slash-commands`, `--verbose`, `--input-format stream-json`, `--output-format stream-json`, `--include-partial-messages`, `--replay-user-messages`, `--permission-mode default`, and `--permission-prompt-tool stdio`. `bypassPermissions` and `--allowed-tools` are never used.
 
-The remote `watch.sding.me` WebView has permission only to open the local Workbench. Runtime status, workspace selection, session control, messages, and normalized events are capability-scoped to the bundled local `agent-workbench` WebView. Malformed, non-object, oversized, invalid-UTF-8, or cross-session stdout quarantines and terminates the child.
+The remote `watch.sding.me` document has permission only to navigate the main WebView to the bundled local Workbench. Runtime status, workspace selection, session control, messages, and normalized events are capability-scoped to the local custom-protocol document in that same WebView. Malformed, non-object, oversized, invalid-UTF-8, or cross-session stdout quarantines and terminates the child.
 
 ## Phase-one limits
 
 - Session resume is explicitly unsupported.
 - Interactive tool approvals are unsupported; requests that require one are denied.
 - Write, edit, and shell tools are unsupported.
+- The UI keeps the explicit **Full access** control and confirmation step from the approved design, but capability v1 refuses to activate it. It never silently falls back to bypass mode.
 - Only one runtime process can be active at a time.
 - The external process is not an operating-system sandbox. Keep tools disabled unless the selected workspace and audited runtime are trusted.
 - Phase one tracks and terminates the direct runtime child only; process-group/Windows Job Object containment for descendants is required before enabling broader tool access.
