@@ -1,0 +1,367 @@
+diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
+index 02afc65..56fc0ff 100644
+--- a/src-tauri/assets/agent-workbench.html
++++ b/src-tauri/assets/agent-workbench.html
+@@ -44,7 +44,7 @@
+ 
+   <div class="modal-backdrop" id="sessionModal" role="dialog" aria-modal="true" aria-labelledby="sessionTitle"><section class="modal"><header><h2 id="sessionTitle">在项目中创建会话</h2><button class="plain" data-close="sessionModal">关闭</button></header><div class="modal-body"><div class="form-field"><label for="sessionProject">项目</label><select id="sessionProject"></select></div><div class="form-field"><label for="sessionName">会话名称</label><input id="sessionName" maxlength="100" placeholder="例如：检查桌面端发布流程"></div><div class="form-field"><label for="sessionModel">模型</label><select id="sessionModel"><option>default</option></select></div><div class="form-field"><label for="sessionPermission">权限</label><select id="sessionPermission"><option value="controlled">受控访问</option><option value="readonly">只读访问</option><option value="full">完全访问</option></select></div></div><footer><button class="btn secondary" data-close="sessionModal">取消</button><button class="btn primary" id="createSession">创建并进入</button></footer></section></div>
+ 
+-  <div class="modal-backdrop" id="fullAccessModal" role="alertdialog" aria-modal="true" aria-labelledby="fullAccessTitle"><section class="modal"><header><h2 id="fullAccessTitle">授予完全访问？</h2><button class="plain" id="cancelFullAccessTop">关闭</button></header><div class="modal-body"><div class="warning"><strong>这是高风险权限。</strong><br>完全访问意味着 Agent 可以在项目目录写入文件并执行命令。当前安全运行时尚未开放这一能力；确认后会检查本地运行时支持情况，不支持时不会降级绕过。</div></div><footer><button class="btn secondary" id="cancelFullAccess">取消</button><button class="btn danger" id="confirmFullAccess">仅本会话授权</button></footer></section></div>
++  <div class="modal-backdrop" id="fullAccessModal" role="alertdialog" aria-modal="true" aria-labelledby="fullAccessTitle"><section class="modal"><header><h2 id="fullAccessTitle">授予完全访问？</h2><button class="plain" id="cancelFullAccessTop">关闭</button></header><div class="modal-body"><div class="warning"><strong>这是高风险权限。</strong><br>确认后会启用 CCB 的真实权限绕过模式。Agent 可以读写或删除文件（包括项目目录外）、执行命令、访问网络，并可能执行 Git Push 或发布操作。授权仅在本次应用运行期间对当前会话有效，重启应用后自动恢复为受控访问。请仅对可信项目启用。</div></div><footer><button class="btn secondary" id="cancelFullAccess">取消</button><button class="btn danger" id="confirmFullAccess">仅本会话授权</button></footer></section></div>
+   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+ 
+   <script>
+@@ -53,7 +53,7 @@
+       var WORKSPACE_URL='https://watch.sding.me/';
+       var STORAGE_KEY='claritide.agent.projects.v1';
+       var bridge=window.__CLARITIDE_CCB__;
+-      var state={projects:[],activeProjectId:'',activeSessionId:'',nativeSessionId:'',turnActive:false,status:null,pendingWorkspace:null,previousPermission:'controlled'};
++      var state={projects:[],activeProjectId:'',activeSessionId:'',nativeSessionId:'',turnActive:false,status:null,pendingWorkspace:null,pendingFullAccess:null,fullAccessGrants:{}};
+       var $=function(selector,root){return (root||document).querySelector(selector)};
+       var $$=function(selector,root){return Array.prototype.slice.call((root||document).querySelectorAll(selector))};
+       var toastTimer;
+@@ -63,7 +63,7 @@
+       function showToast(message){var node=$('#toast');node.textContent=message;node.classList.add('visible');window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){node.classList.remove('visible')},2200)}
+       function openModal(id){$('#'+id).classList.add('open')}
+       function closeModal(id){$('#'+id).classList.remove('open')}
+-      function load(){try{var parsed=JSON.parse(window.localStorage.getItem(STORAGE_KEY)||'[]');state.projects=Array.isArray(parsed)?parsed:[]}catch(_error){state.projects=[]}}
++      function load(){try{var parsed=JSON.parse(window.localStorage.getItem(STORAGE_KEY)||'[]');state.projects=Array.isArray(parsed)?parsed:[];state.projects.forEach(function(project){(project.sessions||[]).forEach(function(session){if(session.permission==='full')session.permission='controlled'})})}catch(_error){state.projects=[]}}
+       function save(){window.localStorage.setItem(STORAGE_KEY,JSON.stringify(state.projects.map(function(project){return{id:project.id,name:project.name,path:project.path,sessions:project.sessions||[]}})))}
+       function activeProject(){return state.projects.find(function(project){return project.id===state.activeProjectId})||null}
+       function activeSession(){var project=activeProject();return project&&(project.sessions||[]).find(function(session){return session.id===state.activeSessionId})||null}
+@@ -104,11 +104,13 @@
+       async function chooseWorkspace(){if(!bridge)return showToast('本地桥接不可用');try{var workspace=await bridge.selectWorkspace();if(!workspace)return;state.pendingWorkspace=workspace;$('#projectPath').value=workspace.path||workspace.name||'';if(!$('#projectName').value)$('#projectName').value=workspace.name||'新项目';$('#createProject').disabled=false}catch(error){showToast('选择文件夹失败：'+safeText(error&&error.message||error))}}
+       function createProject(){var workspace=state.pendingWorkspace,name=$('#projectName').value.trim();if(!workspace||!name)return;var project={id:uid('project'),name:name,path:workspace.path,nativeWorkspace:workspace,sessions:[]};state.projects.unshift(project);state.activeProjectId=project.id;state.activeSessionId='';save();closeModal('projectModal');renderProjects();syncControls();openSessionModal();showToast('项目已创建，请创建第一个会话')}
+       function openSessionModal(){var project=activeProject();if(!project)return showToast('请先创建或选择项目');refreshProjectSelect();$('#sessionProject').value=project.id;$('#sessionName').value='';$('#sessionModel').value=$('#topModel').value||'default';$('#sessionPermission').value='controlled';openModal('sessionModal');$('#sessionName').focus()}
+-      function createSession(){var projectId=$('#sessionProject').value,project=state.projects.find(function(item){return item.id===projectId}),name=$('#sessionName').value.trim();if(!project||!name)return showToast('请选择项目并填写会话名称');var permission=$('#sessionPermission').value;if(permission==='full'){state.previousPermission='controlled';openModal('fullAccessModal');return}var session={id:uid('session'),name:name,model:$('#sessionModel').value||'default',permission:permission,updatedAt:Date.now(),messages:[]};project.sessions=project.sessions||[];project.sessions.unshift(session);state.activeProjectId=project.id;state.activeSessionId=session.id;state.nativeSessionId='';save();closeModal('sessionModal');renderProjects();renderConversation();syncControls();showToast('会话已创建')}
+-      function setPermission(value){var session=activeSession();if(!session)return;if(value==='full'){state.previousPermission=session.permission;openModal('fullAccessModal');return}session.permission=value;save();$('#topPermission').value=value;$('#bottomPermission').value=value;showToast('权限模式已更新')}
+-      function confirmFullAccess(){closeModal('fullAccessModal');$('#sessionPermission').value='controlled';syncControls();showToast('当前安全运行时未开放完全访问，未执行授权')}
++      function commitSession(permission){var projectId=$('#sessionProject').value,project=state.projects.find(function(item){return item.id===projectId}),name=$('#sessionName').value.trim();if(!project||!name)return showToast('请选择项目并填写会话名称');var session={id:uid('session'),name:name,model:$('#sessionModel').value||'default',permission:permission,updatedAt:Date.now(),messages:[]};project.sessions=project.sessions||[];project.sessions.unshift(session);state.activeProjectId=project.id;state.activeSessionId=session.id;state.nativeSessionId='';if(permission==='full')state.fullAccessGrants[session.id]=true;save();closeModal('sessionModal');renderProjects();renderConversation();syncControls();showToast(permission==='full'?'会话已创建，完全访问已启用':'会话已创建')}
++      function createSession(){var projectId=$('#sessionProject').value,project=state.projects.find(function(item){return item.id===projectId}),name=$('#sessionName').value.trim();if(!project||!name)return showToast('请选择项目并填写会话名称');var permission=$('#sessionPermission').value;if(permission==='full'){state.pendingFullAccess={kind:'create'};openModal('fullAccessModal');return}commitSession(permission)}
++      function setPermission(value){var session=activeSession();if(!session)return;if(value==='full'){state.pendingFullAccess={kind:'update',sessionId:session.id};openModal('fullAccessModal');return}session.permission=value;delete state.fullAccessGrants[session.id];save();$('#topPermission').value=value;$('#bottomPermission').value=value;showToast('权限模式已更新')}
++      function cancelFullAccess(){state.pendingFullAccess=null;closeModal('fullAccessModal');syncControls()}
++      function confirmFullAccess(){var pending=state.pendingFullAccess;state.pendingFullAccess=null;closeModal('fullAccessModal');if(!pending)return syncControls();if(pending.kind==='create'){commitSession('full');return}var session=activeSession();if(!session||session.id!==pending.sessionId)return syncControls();session.permission='full';state.fullAccessGrants[session.id]=true;save();syncControls();showToast('已为本会话启用完全访问')}
+ 
+-      async function ensureNativeSession(){if(state.nativeSessionId)return state.nativeSessionId;var project=activeProject(),session=activeSession();if(!project||!session)throw new Error('未选择项目会话');if(!project.nativeWorkspace){var workspace=await bridge.selectWorkspace();if(!workspace)throw new Error('需要重新授权项目文件夹');project.nativeWorkspace=workspace;project.path=workspace.path||project.path;save();renderProjects()}var id=crypto.randomUUID();await bridge.startSession({clientSessionId:id,workspace:project.nativeWorkspace.id,model:session.model,locale:'zh-CN'});state.nativeSessionId=id;syncControls();return id}
++      async function ensureNativeSession(){if(state.nativeSessionId)return state.nativeSessionId;var project=activeProject(),session=activeSession();if(!project||!session)throw new Error('未选择项目会话');if(session.permission==='full'&&!state.fullAccessGrants[session.id])throw new Error('完全访问需要在本次应用运行期间重新确认');if(!project.nativeWorkspace){var workspace=await bridge.selectWorkspace();if(!workspace)throw new Error('需要重新授权项目文件夹');project.nativeWorkspace=workspace;project.path=workspace.path||project.path;save();renderProjects()}var id=crypto.randomUUID();await bridge.startSession({clientSessionId:id,workspace:project.nativeWorkspace.id,model:session.model,permission:session.permission,locale:'zh-CN'});state.nativeSessionId=id;syncControls();return id}
+       async function send(){var value=$('#prompt').value.trim();if(!value||state.turnActive)return;try{var id=await ensureNativeSession();appendMessage('user',value,Date.now(),true);$('#prompt').value='';state.turnActive=true;syncControls();addEvent('开始任务',value);await bridge.send({sessionId:id,content:value})}catch(error){state.turnActive=false;syncControls();showToast('发送失败：'+safeText(error&&error.message||error));addEvent('错误',safeText(error&&error.message||error))}}
+       async function stop(){if(!state.nativeSessionId||!state.turnActive)return;try{await bridge.stop({sessionId:state.nativeSessionId});showToast('已发送停止请求')}catch(error){showToast('停止失败：'+safeText(error&&error.message||error))}}
+       async function returnToWorkspace(){if(state.nativeSessionId){try{await bridge.close({sessionId:state.nativeSessionId})}catch(_error){}}window.location.assign(WORKSPACE_URL)}
+@@ -118,7 +120,7 @@
+       function bind(){
+         $('#newProject').addEventListener('click',function(){state.pendingWorkspace=null;$('#projectName').value='';$('#projectPath').value='';$('#createProject').disabled=true;openModal('projectModal')});$('#chooseFolder').addEventListener('click',chooseWorkspace);$('#createProject').addEventListener('click',createProject);$('#newSession').addEventListener('click',openSessionModal);$('#createSession').addEventListener('click',createSession);$('#search').addEventListener('input',renderProjects);$('#send').addEventListener('click',send);$('#stop').addEventListener('click',stop);$('#prompt').addEventListener('keydown',function(event){if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();void send()}});
+         $('#topModel').addEventListener('change',function(event){var session=activeSession();if(session&&!state.nativeSessionId){session.model=event.target.value;$('#bottomModel').value=event.target.value;save()}});$('#bottomModel').addEventListener('change',function(event){$('#topModel').value=event.target.value;$('#topModel').dispatchEvent(new Event('change'))});$('#topPermission').addEventListener('change',function(event){setPermission(event.target.value)});$('#bottomPermission').addEventListener('change',function(event){setPermission(event.target.value)});
+-        $('#cancelFullAccess').addEventListener('click',function(){closeModal('fullAccessModal');syncControls()});$('#cancelFullAccessTop').addEventListener('click',function(){closeModal('fullAccessModal');syncControls()});$('#confirmFullAccess').addEventListener('click',confirmFullAccess);$$('[data-close]').forEach(function(button){button.addEventListener('click',function(){closeModal(button.getAttribute('data-close'))})});$$('.modal-backdrop').forEach(function(backdrop){backdrop.addEventListener('click',function(event){if(event.target===backdrop)closeModal(backdrop.id)})});$$('[data-return]').forEach(function(button){button.addEventListener('click',returnToWorkspace)});
++        $('#cancelFullAccess').addEventListener('click',cancelFullAccess);$('#cancelFullAccessTop').addEventListener('click',cancelFullAccess);$('#confirmFullAccess').addEventListener('click',confirmFullAccess);$$('[data-close]').forEach(function(button){button.addEventListener('click',function(){closeModal(button.getAttribute('data-close'))})});$$('.modal-backdrop').forEach(function(backdrop){backdrop.addEventListener('click',function(event){if(event.target===backdrop){if(backdrop.id==='fullAccessModal')cancelFullAccess();else closeModal(backdrop.id)}})});$$('[data-return]').forEach(function(button){button.addEventListener('click',returnToWorkspace)});
+         $('#closeActivity').addEventListener('click',function(){$('#activityPanel').classList.add('closed');$('#workspaceGrid').style.gridTemplateColumns='294px minmax(480px,1fr)'});$('#toggleActivity').addEventListener('click',function(){var panel=$('#activityPanel');panel.classList.toggle('closed');$('#workspaceGrid').style.gridTemplateColumns=panel.classList.contains('closed')?'294px minmax(480px,1fr)':''});$$('[data-tab]').forEach(function(button){button.addEventListener('click',function(){$$('[data-tab]').forEach(function(item){item.classList.toggle('active',item===button)});$('#eventsView').hidden=button.getAttribute('data-tab')!=='events';$('#changesView').hidden=button.getAttribute('data-tab')!=='changes'})})
+       }
+ 
+diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
+index 5dc39a1..695d355 100644
+--- a/src-tauri/src/agent_runtime.rs
++++ b/src-tauri/src/agent_runtime.rs
+@@ -25,7 +25,7 @@ use tauri_plugin_dialog::DialogExt;
+ #[cfg(target_os = "windows")]
+ use std::os::windows::process::CommandExt;
+ 
+-pub const CAPABILITY_VERSION: u32 = 1;
++pub const CAPABILITY_VERSION: u32 = 2;
+ const MAX_SESSIONS: usize = 1;
+ const MAX_EVENTS_PER_SESSION: usize = 512;
+ const MAX_EVENTS_PER_POLL: usize = 100;
+@@ -61,6 +61,25 @@ enum ToolsMode {
+     ReadOnly,
+ }
+ 
++#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
++#[serde(rename_all = "lowercase")]
++enum AgentPermissionMode {
++    #[default]
++    Controlled,
++    Readonly,
++    Full,
++}
++
++impl AgentPermissionMode {
++    fn as_str(self) -> &'static str {
++        match self {
++            Self::Controlled => "controlled",
++            Self::Readonly => "readonly",
++            Self::Full => "full",
++        }
++    }
++}
++
+ impl ToolsMode {
+     fn from_env() -> Result<Self, String> {
+         match env::var(RUNTIME_TOOLS_ENV)
+@@ -113,6 +132,7 @@ struct SessionRecord {
+     workspace_id: String,
+     workspace_name: String,
+     model: String,
++    permission: AgentPermissionMode,
+     events: VecDeque<AgentEvent>,
+     queued_event_bytes: usize,
+     stderr: VecDeque<String>,
+@@ -200,6 +220,7 @@ pub struct AgentCapabilities {
+     resume: bool,
+     tools: bool,
+     approvals: bool,
++    full_access: bool,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -210,6 +231,7 @@ pub struct AgentSessionSummary {
+     workspace_id: String,
+     workspace_name: String,
+     model: String,
++    permission: String,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -229,6 +251,8 @@ pub struct AgentStartRequest {
+     model: Option<String>,
+     #[serde(default)]
+     locale: Option<String>,
++    #[serde(default)]
++    permission: AgentPermissionMode,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -237,6 +261,7 @@ pub struct AgentStartResponse {
+     session_id: String,
+     model: String,
+     workspace: String,
++    permission: String,
+ }
+ 
+ #[derive(Debug, Deserialize)]
+@@ -665,7 +690,7 @@ pub(crate) fn normalize_ndjson_line(line: &str) -> Vec<NormalizedEventDraft> {
+                     kind: "error",
+                     payload: json!({
+                         "code": "tool_approval_unsupported",
+-                        "message": "Tool approval is not available in agent capability v1",
++                        "message": "Tool approval is not available in agent capability v2",
+                         "terminal": false,
+                     }),
+                 });
+@@ -934,7 +959,7 @@ fn handle_stdout_line(session_id: &str, generation: u64, line: &str) {
+                         "request_id": request_id,
+                         "response": {
+                             "behavior": "deny",
+-                            "message": "Claritide agent capability v1 does not support tool approvals",
++                            "message": "Claritide agent capability v2 does not support tool approvals",
+                             "interrupt": false,
+                             "toolUseID": tool_use_id.unwrap_or_default(),
+                         },
+@@ -1293,7 +1318,12 @@ fn user_message(session_id: &str, turn_id: &str, content: &str) -> Value {
+     })
+ }
+ 
+-fn runtime_args(session_id: &str, model: &str, tools_mode: ToolsMode) -> Vec<String> {
++fn runtime_args(
++    session_id: &str,
++    model: &str,
++    tools_mode: ToolsMode,
++    permission: AgentPermissionMode,
++) -> Vec<String> {
+     let mut args = vec![
+         "--print".to_string(),
+         // Print mode implicitly trusts the working directory. Bare mode plus
+@@ -1315,16 +1345,43 @@ fn runtime_args(session_id: &str, model: &str, tools_mode: ToolsMode) -> Vec<Str
+         "stream-json".to_string(),
+         "--include-partial-messages".to_string(),
+         "--replay-user-messages".to_string(),
+-        "--permission-mode".to_string(),
+-        "default".to_string(),
+-        // Without --sdk-url CCB does not automatically choose StructuredIO for
+-        // permission prompts. The stdio handler is required so every tool request
+-        // remains under Claritide control.
+-        "--permission-prompt-tool".to_string(),
+-        "stdio".to_string(),
+-        "--tools".to_string(),
+-        tools_mode.cli_value().to_string(),
+     ];
++    match permission {
++        AgentPermissionMode::Controlled => {
++            args.extend([
++                "--permission-mode".to_string(),
++                "default".to_string(),
++                // Without --sdk-url CCB does not automatically choose StructuredIO
++                // for permission prompts. Keep all requests under Claritide control.
++                "--permission-prompt-tool".to_string(),
++                "stdio".to_string(),
++                "--tools".to_string(),
++                tools_mode.cli_value().to_string(),
++            ]);
++        }
++        AgentPermissionMode::Readonly => {
++            args.extend([
++                "--permission-mode".to_string(),
++                "plan".to_string(),
++                "--permission-prompt-tool".to_string(),
++                "stdio".to_string(),
++                "--tools".to_string(),
++                ToolsMode::ReadOnly.cli_value().to_string(),
++            ]);
++        }
++        AgentPermissionMode::Full => {
++            // This is deliberately session-scoped. The WebView must send `full`
++            // for a newly started process after the user confirms the warning.
++            // Omitting --tools restores CCB's production tool set, while the
++            // explicit dangerous flag opts into its real bypass mode. Managed
++            // CCB policy can still disable bypassPermissions.
++            args.extend([
++                "--permission-mode".to_string(),
++                "bypassPermissions".to_string(),
++                "--dangerously-skip-permissions".to_string(),
++            ]);
++        }
++    }
+     if model != "default" {
+         args.push("--model".to_string());
+         args.push(model.to_string());
+@@ -1358,6 +1415,7 @@ pub fn agent_get_status() -> AgentStatus {
+                     workspace_id: session.workspace_id.clone(),
+                     workspace_name: session.workspace_name.clone(),
+                     model: session.model.clone(),
++                    permission: session.permission.as_str().to_string(),
+                 })
+                 .collect();
+             (sessions, state.last_error.clone())
+@@ -1379,6 +1437,7 @@ pub fn agent_get_status() -> AgentStatus {
+                 .as_ref()
+                 .is_ok_and(|config| config.tools_mode == ToolsMode::ReadOnly),
+             approvals: false,
++            full_access: true,
+         },
+         supported: vec![
+             "getStatus",
+@@ -1390,8 +1449,9 @@ pub fn agent_get_status() -> AgentStatus {
+             "stop",
+             "close",
+             "onEvent",
++            "fullAccess",
+         ],
+-        unsupported: vec!["resume", "toolApproval", "writeTools"],
++        unsupported: vec!["resume", "toolApproval"],
+         sessions,
+         last_error: config.err().or(runtime_error),
+     }
+@@ -1498,6 +1558,7 @@ pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, Str
+                 &request.client_session_id,
+                 &model,
+                 config.tools_mode,
++                request.permission,
+             ))
+             .current_dir(&resolved_workspace)
+             .env("CLAUDE_CONFIG_DIR", &config_dir)
+@@ -1541,6 +1602,7 @@ pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, Str
+                 workspace_id: request.workspace.clone(),
+                 workspace_name,
+                 model: model.clone(),
++                permission: request.permission,
+                 events: VecDeque::new(),
+                 queued_event_bytes: 0,
+                 stderr: VecDeque::new(),
+@@ -1575,6 +1637,7 @@ pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, Str
+         session_id: request.client_session_id,
+         model,
+         workspace: request.workspace,
++        permission: request.permission.as_str().to_string(),
+     })
+ }
+ 
+@@ -1781,7 +1844,7 @@ mod tests {
+     use super::{
+         advance_seq, mismatched_session_id, new_uuid_v4, normalize_ndjson_line, read_bounded_lines,
+         remember_protocol_id, result_fallback_text, runtime_args, user_message, valid_model_id,
+-        valid_session_id, BoundedLine, ToolsMode,
++        valid_session_id, AgentPermissionMode, BoundedLine, ToolsMode,
+     };
+     use std::collections::{HashSet, VecDeque};
+ 
+@@ -1865,11 +1928,12 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn ccb_args_force_structured_permissions_without_bypass() {
++    fn controlled_args_force_structured_permissions_without_bypass() {
+         let args = runtime_args(
+             "550e8400-e29b-41d4-a716-446655440000",
+             "default",
+             ToolsMode::Disabled,
++            AgentPermissionMode::Controlled,
+         );
+         assert!(args
+             .windows(2)
+@@ -1887,6 +1951,46 @@ mod tests {
+             .windows(2)
+             .any(|pair| pair == ["--permission-mode", "default"]));
+         assert!(!args.iter().any(|arg| arg.contains("bypass")));
++        assert!(!args
++            .iter()
++            .any(|arg| arg == "--dangerously-skip-permissions"));
++    }
++
++    #[test]
++    fn readonly_args_force_plan_mode_and_read_tools() {
++        let args = runtime_args(
++            "550e8400-e29b-41d4-a716-446655440000",
++            "default",
++            ToolsMode::Disabled,
++            AgentPermissionMode::Readonly,
++        );
++        assert!(args
++            .windows(2)
++            .any(|pair| pair == ["--permission-mode", "plan"]));
++        assert!(args
++            .windows(2)
++            .any(|pair| pair == ["--tools", "Read,Glob,Grep"]));
++        assert!(!args
++            .iter()
++            .any(|arg| arg == "--dangerously-skip-permissions"));
++    }
++
++    #[test]
++    fn full_access_args_enable_real_ccb_bypass_and_all_default_tools() {
++        let args = runtime_args(
++            "550e8400-e29b-41d4-a716-446655440000",
++            "default",
++            ToolsMode::Disabled,
++            AgentPermissionMode::Full,
++        );
++        assert!(args
++            .windows(2)
++            .any(|pair| pair == ["--permission-mode", "bypassPermissions"]));
++        assert!(args
++            .iter()
++            .any(|arg| arg == "--dangerously-skip-permissions"));
++        assert!(!args.iter().any(|arg| arg == "--permission-prompt-tool"));
++        assert!(!args.iter().any(|arg| arg == "--tools"));
+     }
+ 
+     #[test]
+diff --git a/src-tauri/src/agent_workbench_bridge.js b/src-tauri/src/agent_workbench_bridge.js
+index 5b1cbf4..e91e546 100644
+--- a/src-tauri/src/agent_workbench_bridge.js
++++ b/src-tauri/src/agent_workbench_bridge.js
+@@ -24,7 +24,7 @@
+   }
+ 
+   function unsupported(name) {
+-    var error = new Error(name + ' is not supported by Claritide agent capability v1');
++    var error = new Error(name + ' is not supported by Claritide agent capability v2');
+     error.code = 'unsupported';
+     return Promise.reject(error);
+   }
+@@ -72,7 +72,7 @@
+   }
+ 
+   var bridge = Object.freeze({
+-    capabilityVersion: 1,
++    capabilityVersion: 2,
+     getStatus: function () {
+       return invoke('agent_get_status');
+     },
+

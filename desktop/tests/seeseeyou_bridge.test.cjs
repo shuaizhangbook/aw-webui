@@ -16,15 +16,26 @@ function response(body, status = 200) {
   };
 }
 
-function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true, platform = 'Win32' }) {
+function loadBridge({
+  initialStorage = {},
+  invoke,
+  fetch,
+  confirm = () => true,
+  platform = 'Win32',
+  installerLocale,
+  documentLanguage = 'zh-CN',
+  languageButton = null,
+}) {
   const values = new Map(Object.entries(initialStorage));
   const listeners = new Map();
   const alerts = [];
   let reloads = 0;
   const document = {
-    documentElement: { lang: 'zh-CN' },
+    documentElement: { lang: documentLanguage },
     addEventListener(name, listener) { listeners.set(name, listener); },
-    querySelector() { return null; },
+    querySelector(selector) {
+      return selector === '[data-language-toggle]' ? languageButton : null;
+    },
     getElementById() { return null; },
     createElement() { return {}; },
   };
@@ -41,6 +52,7 @@ function loadBridge({ initialStorage = {}, invoke, fetch, confirm = () => true, 
   };
   const window = {
     __SEESEEYOU_BRIDGE_TEST_MODE__: true,
+    __CLARITIDE_INSTALLER_LOCALE__: installerLocale,
     __TAURI_INTERNALS__: { invoke: versionedInvoke },
     location: {
       origin: 'https://watch.sding.me',
@@ -103,9 +115,44 @@ test('remote workspace receives only the isolated agent-window opener', async ()
   await harness.agentDesktop.openWorkbench();
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'open_agent_workbench');
-  assert.deepEqual(Object.keys(calls[0][1]), []);
+  assert.equal(calls[0][1].locale, 'zh-CN');
   assert.equal(harness.agentDesktop.startSession, undefined);
   assert.equal(harness.agentDesktop.selectWorkspace, undefined);
+});
+
+test('installer language is applied once without overriding later manual changes', () => {
+  let clicks = 0;
+  const languageButton = { click() { clicks += 1; } };
+  const base = {
+    invoke: async () => null,
+    fetch: async () => response({}),
+    installerLocale: 'en',
+    documentLanguage: 'zh-CN',
+    languageButton,
+  };
+  const first = loadBridge(base);
+  assert.equal(first.bridge.applyInstallerLanguagePreference(), true);
+  assert.equal(clicks, 1);
+  assert.equal(first.storage.get('claritide_installer_locale_applied'), 'en');
+
+  const afterManualSwitch = loadBridge({
+    ...base,
+    initialStorage: { claritide_installer_locale_applied: 'en' },
+  });
+  assert.equal(afterManualSwitch.bridge.applyInstallerLanguagePreference(), true);
+  assert.equal(clicks, 1);
+});
+
+test('English workspace opens the AI Workbench in English', async () => {
+  const calls = [];
+  const harness = loadBridge({
+    documentLanguage: 'en',
+    invoke: async (command, args) => { calls.push([command, args]); },
+    fetch: async () => response({}),
+  });
+  await harness.agentDesktop.openWorkbench();
+  assert.equal(calls[0][0], 'open_agent_workbench');
+  assert.equal(calls[0][1].locale, 'en');
 });
 
 test('cold logged-out startup clears an existing native identity', async () => {

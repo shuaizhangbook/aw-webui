@@ -1,0 +1,237 @@
+diff --git a/src-tauri/agent-runtime/README.txt b/src-tauri/agent-runtime/README.txt
+new file mode 100644
+index 0000000..b832f15
+--- /dev/null
++++ b/src-tauri/agent-runtime/README.txt
+@@ -0,0 +1,9 @@
++This directory is populated by the Claritide packaging workflow.
++
++Expected packaged layout:
++  ccb/dist/cli-node.js
++  node/node.exe                 (Windows)
++  node/bin/node                 (macOS and Linux)
++  manifest.json
++
++Do not commit runtime binaries or API credentials here.
+diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
+index 695d355..505c83f 100644
+--- a/src-tauri/src/agent_runtime.rs
++++ b/src-tauri/src/agent_runtime.rs
+@@ -1,10 +1,11 @@
+-//! Narrow, local-only adapter for the Claritide agent runtime proof of concept.
++//! Narrow, local-only adapter for the Claritide agent runtime.
+ //!
+ //! The browser never supplies an executable, command-line flag, working-directory
+ //! path, or environment variable. A native folder picker mints an opaque workspace
+-//! handle, and the runtime executable is enabled only through explicit development
+-//! environment variables. This keeps the remote Claritide workspace unable to turn
+-//! Tauri IPC into a generic shell.
++//! handle. Production packages use the CCB and Node.js runtime bundled as Tauri
++//! resources; explicit development environment variables may override those paths.
++//! This keeps the remote Claritide workspace unable to turn Tauri IPC into a generic
++//! shell.
+ 
+ use serde::{Deserialize, Serialize};
+ use serde_json::{json, Value};
+@@ -19,7 +20,7 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
+ use std::sync::{Arc, Mutex, OnceLock};
+ use std::thread;
+ use std::time::{Duration, SystemTime, UNIX_EPOCH};
+-use tauri::AppHandle;
++use tauri::{AppHandle, Manager};
+ use tauri_plugin_dialog::DialogExt;
+ 
+ #[cfg(target_os = "windows")]
+@@ -53,6 +54,22 @@ struct RuntimeConfig {
+     entrypoint: Option<PathBuf>,
+     models: Vec<String>,
+     tools_mode: ToolsMode,
++    source: RuntimeSource,
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++enum RuntimeSource {
++    Bundled,
++    Environment,
++}
++
++impl RuntimeSource {
++    fn as_str(self) -> &'static str {
++        match self {
++            Self::Bundled => "bundled",
++            Self::Environment => "environment",
++        }
++    }
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -201,6 +218,7 @@ pub struct AgentStatus {
+     capability_version: u32,
+     available: bool,
+     runtime: &'static str,
++    runtime_source: String,
+     tools_mode: String,
+     allowed_models: Vec<String>,
+     capabilities: AgentCapabilities,
+@@ -367,19 +385,57 @@ fn allowed_models() -> Result<Vec<String>, String> {
+     Ok(models)
+ }
+ 
+-fn runtime_config() -> Result<RuntimeConfig, String> {
+-    let executable = env::var_os(RUNTIME_EXECUTABLE_ENV)
+-        .ok_or_else(|| format!("{RUNTIME_EXECUTABLE_ENV} is not configured"))?;
+-    let executable = validate_absolute_file(Path::new(&executable), RUNTIME_EXECUTABLE_ENV)?;
+-    let entrypoint = env::var_os(RUNTIME_ENTRYPOINT_ENV)
+-        .filter(|value| !value.is_empty())
+-        .map(|value| validate_absolute_file(Path::new(&value), RUNTIME_ENTRYPOINT_ENV))
+-        .transpose()?;
++fn bundled_runtime_paths(resource_dir: &Path) -> (PathBuf, PathBuf) {
++    #[cfg(target_os = "windows")]
++    let executable = resource_dir
++        .join("agent-runtime")
++        .join("node")
++        .join("node.exe");
++    #[cfg(not(target_os = "windows"))]
++    let executable = resource_dir
++        .join("agent-runtime")
++        .join("node")
++        .join("bin")
++        .join("node");
++    let entrypoint = resource_dir
++        .join("agent-runtime")
++        .join("ccb")
++        .join("dist")
++        .join("cli-node.js");
++    (executable, entrypoint)
++}
++
++fn runtime_config(app: &AppHandle) -> Result<RuntimeConfig, String> {
++    let (executable, entrypoint, source) = if let Some(executable) =
++        env::var_os(RUNTIME_EXECUTABLE_ENV).filter(|value| !value.is_empty())
++    {
++        let executable = validate_absolute_file(Path::new(&executable), RUNTIME_EXECUTABLE_ENV)?;
++        let entrypoint = env::var_os(RUNTIME_ENTRYPOINT_ENV)
++            .filter(|value| !value.is_empty())
++            .map(|value| validate_absolute_file(Path::new(&value), RUNTIME_ENTRYPOINT_ENV))
++            .transpose()?;
++        (executable, entrypoint, RuntimeSource::Environment)
++    } else {
++        if env::var_os(RUNTIME_ENTRYPOINT_ENV).is_some_and(|value| !value.is_empty()) {
++            return Err(format!(
++                "{RUNTIME_ENTRYPOINT_ENV} requires {RUNTIME_EXECUTABLE_ENV}"
++            ));
++        }
++        let resource_dir = app
++            .path()
++            .resource_dir()
++            .map_err(|error| format!("Unable to locate Claritide resources: {error}"))?;
++        let (executable, entrypoint) = bundled_runtime_paths(&resource_dir);
++        let executable = validate_absolute_file(&executable, "bundled Node.js runtime")?;
++        let entrypoint = validate_absolute_file(&entrypoint, "bundled CCB entrypoint")?;
++        (executable, Some(entrypoint), RuntimeSource::Bundled)
++    };
+     Ok(RuntimeConfig {
+         executable,
+         entrypoint,
+         models: allowed_models()?,
+         tools_mode: ToolsMode::from_env()?,
++        source,
+     })
+ }
+ 
+@@ -1390,8 +1446,8 @@ fn runtime_args(
+ }
+ 
+ #[tauri::command]
+-pub fn agent_get_status() -> AgentStatus {
+-    let config = runtime_config();
++pub fn agent_get_status(app: AppHandle) -> AgentStatus {
++    let config = runtime_config(&app);
+     let tools_mode = config
+         .as_ref()
+         .map(|config| config.tools_mode.as_str().to_string())
+@@ -1425,6 +1481,10 @@ pub fn agent_get_status() -> AgentStatus {
+         capability_version: CAPABILITY_VERSION,
+         available: config.is_ok(),
+         runtime: "ccb",
++        runtime_source: config
++            .as_ref()
++            .map(|config| config.source.as_str().to_string())
++            .unwrap_or_else(|_| "unavailable".to_string()),
+         tools_mode,
+         allowed_models,
+         capabilities: AgentCapabilities {
+@@ -1491,7 +1551,10 @@ pub async fn agent_select_workspace(app: AppHandle) -> Result<Option<AgentWorksp
+ }
+ 
+ #[tauri::command]
+-pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, String> {
++pub fn agent_start(
++    app: AppHandle,
++    request: AgentStartRequest,
++) -> Result<AgentStartResponse, String> {
+     if !valid_session_id(&request.client_session_id) {
+         return Err("clientSessionId must be a UUID".to_string());
+     }
+@@ -1503,7 +1566,7 @@ pub fn agent_start(request: AgentStartRequest) -> Result<AgentStartResponse, Str
+     }) {
+         return Err("Invalid locale".to_string());
+     }
+-    let config = runtime_config()?;
++    let config = runtime_config(&app)?;
+     let model = request.model.unwrap_or_else(|| config.models[0].clone());
+     if !config.models.iter().any(|allowed| allowed == &model) {
+         return Err("The requested model is not in the local development allowlist".to_string());
+@@ -1842,11 +1905,13 @@ pub fn close_all() {
+ #[cfg(test)]
+ mod tests {
+     use super::{
+-        advance_seq, mismatched_session_id, new_uuid_v4, normalize_ndjson_line, read_bounded_lines,
+-        remember_protocol_id, result_fallback_text, runtime_args, user_message, valid_model_id,
+-        valid_session_id, AgentPermissionMode, BoundedLine, ToolsMode,
++        advance_seq, bundled_runtime_paths, mismatched_session_id, new_uuid_v4,
++        normalize_ndjson_line, read_bounded_lines, remember_protocol_id, result_fallback_text,
++        runtime_args, user_message, valid_model_id, valid_session_id, AgentPermissionMode,
++        BoundedLine, ToolsMode,
+     };
+     use std::collections::{HashSet, VecDeque};
++    use std::path::Path;
+ 
+     #[test]
+     fn validates_session_and_model_ids_without_accepting_cli_tokens() {
+@@ -1927,6 +1992,20 @@ mod tests {
+         assert_ne!(one, two);
+     }
+ 
++    #[test]
++    fn bundled_runtime_layout_is_platform_specific_and_fixed() {
++        let resource_dir = Path::new("/opt/claritide/resources");
++        let (executable, entrypoint) = bundled_runtime_paths(resource_dir);
++        #[cfg(target_os = "windows")]
++        assert_eq!(executable, resource_dir.join("agent-runtime/node/node.exe"));
++        #[cfg(not(target_os = "windows"))]
++        assert_eq!(executable, resource_dir.join("agent-runtime/node/bin/node"));
++        assert_eq!(
++            entrypoint,
++            resource_dir.join("agent-runtime/ccb/dist/cli-node.js")
++        );
++    }
++
+     #[test]
+     fn controlled_args_force_structured_permissions_without_bypass() {
+         let args = runtime_args(
+diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
+index 9c130ea..9af0722 100644
+--- a/src-tauri/tauri.conf.json
++++ b/src-tauri/tauri.conf.json
+@@ -20,6 +20,9 @@
+   "bundle": {
+     "active": true,
+     "targets": "all",
++    "resources": [
++      "agent-runtime/**/*"
++    ],
+     "icon": [
+       "icons/32x32.png",
+       "icons/128x128.png",
+

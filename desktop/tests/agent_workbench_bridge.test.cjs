@@ -34,7 +34,7 @@ function loadBridge(invoke) {
   };
 }
 
-test('local bridge exposes the capability-v1 surface', async () => {
+test('local bridge exposes the capability-v2 surface', async () => {
   const calls = [];
   const harness = loadBridge(async (command, args) => {
     calls.push([command, args]);
@@ -44,11 +44,11 @@ test('local bridge exposes the capability-v1 surface', async () => {
     return null;
   });
 
-  assert.equal(harness.bridge.capabilityVersion, 1);
+  assert.equal(harness.bridge.capabilityVersion, 2);
   assert.deepEqual(await harness.bridge.listModels(), ['default', 'gpt-test']);
   assert.deepEqual(await harness.bridge.listSessions(), [{ sessionId: 'one' }]);
   await harness.bridge.selectWorkspace();
-  await harness.bridge.startSession({ clientSessionId: 'id', workspace: 'opaque' });
+  await harness.bridge.startSession({ clientSessionId: 'id', workspace: 'opaque', permission: 'full' });
   await harness.bridge.send({ sessionId: 'id', content: 'hello' });
   await harness.bridge.stop({ sessionId: 'id' });
   await harness.bridge.close({ sessionId: 'id' });
@@ -64,6 +64,7 @@ test('local bridge exposes the capability-v1 surface', async () => {
       'agent_close',
     ],
   );
+  assert.equal(calls[3][1].request.permission, 'full');
   assert.equal(Object.getOwnPropertyDescriptor(harness.window, '__CLARITIDE_CCB__').writable, false);
 });
 
