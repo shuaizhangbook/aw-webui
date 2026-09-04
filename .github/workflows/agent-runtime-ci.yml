@@ -12,6 +12,7 @@ on:
       - 'desktop/patches/aw-tauri-agent-full-access.patch'
       - 'desktop/patches/aw-tauri-agent-bundled-runtime.patch'
       - 'desktop/patches/aw-tauri-installer-language.patch'
+      - 'desktop/patches/aw-tauri-agent-windows-navigation.patch'
       - 'desktop/aw-tauri.iss'
       - 'desktop/scripts/prepare-ccb-runtime.sh'
       - 'desktop/workbench/**'
@@ -126,6 +127,10 @@ jobs:
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-installer-language.patch"
           git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-installer-language.patch"
+          git -C activitywatch/aw-tauri apply --check \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-windows-navigation.patch"
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-windows-navigation.patch"
           cmp custom-webui/desktop/workbench/agent-workbench.html \
             activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html
           cmp custom-webui/desktop/workbench/agent_workbench_bridge.js \
@@ -135,12 +140,6 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-
-      - name: Generate upstream Tauri icons
-        working-directory: activitywatch/aw-tauri
-        run: |
-          npm ci
-          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
 
       - name: Test isolated JavaScript bridges
         run: |
@@ -169,6 +168,12 @@ jobs:
           Path(os.environ['RUNNER_TEMP'], 'agent-workbench-inline.js').write_text(scripts[0])
           PY
           node --check "$RUNNER_TEMP/agent-workbench-inline.js"
+
+      - name: Generate upstream Tauri icons
+        working-directory: activitywatch/aw-tauri
+        run: |
+          npm ci
+          npm run tauri icon "$GITHUB_WORKSPACE/custom-webui/desktop/assets/seeseeyou-icon.png"
 
       - name: Verify source capability separation
         run: |
@@ -207,6 +212,9 @@ jobs:
           workbench = (root / 'src/agent_workbench.rs').read_text()
           runtime = (root / 'src/agent_runtime.rs').read_text()
           assert '.navigate(url)' in workbench
+          assert 'cfg!(target_os = "windows")' in workbench
+          assert 'http://claritide-agent.localhost' in workbench
+          assert 'claritide-agent://localhost' in workbench
           assert 'WebviewWindowBuilder' not in workbench
           assert 'main_navigation_allowed' in lib
           assert 'initialization_script(include_str!("agent_workbench_bridge.js"))' in lib
