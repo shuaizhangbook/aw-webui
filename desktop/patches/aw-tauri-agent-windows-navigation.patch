@@ -1,5 +1,5 @@
 diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
-index 702a937..4bec132 100644
+index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b4c505bf6 100644
 --- a/src-tauri/assets/agent-workbench.html
 +++ b/src-tauri/assets/agent-workbench.html
 @@ -6,155 +6,1723 @@
@@ -1858,7 +1858,7 @@ index 702a937..4bec132 100644
      })();
    </script>
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
-index 505c83f..4f68404 100644
+index 505c83fc7ace253a2d232346ff8b97bf7897de9d..4f68404454899f049c3a3034facf3adb5aa0363b 100644
 --- a/src-tauri/src/agent_runtime.rs
 +++ b/src-tauri/src/agent_runtime.rs
 @@ -42,19 +42,32 @@ const RUNTIME_EXECUTABLE_ENV: &str = "CLARITIDE_AGENT_EXECUTABLE";
@@ -2351,7 +2351,7 @@ index 505c83f..4f68404 100644
      fn controlled_args_force_structured_permissions_without_bypass() {
          let args = runtime_args(
 diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
-index 38dc896..94d5a78 100644
+index 38dc896d339398ea81155e2117332126f7cb8d22..94d5a7824124c05c475c2e6337756848c71cf1d8 100644
 --- a/src-tauri/src/agent_workbench.rs
 +++ b/src-tauri/src/agent_workbench.rs
 @@ -1,6 +1,8 @@
@@ -2437,10 +2437,18 @@ index 38dc896..94d5a78 100644
          error
      })
 diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
-index 92a2e6d..480974c 100644
+index 92a2e6d2637af86f10e7316249f3b39d805e2173..a28bcdac67d954d72bcd1ed103825d19f85d3c7e 100644
 --- a/src-tauri/src/seeseeyou_bridge.js
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -40,7 +40,7 @@
+@@ -13,6 +13,7 @@
+   var syncRerunRequested = false;
+   var syncClearPending = false;
+   var loggingOut = false;
++  var agentActivationRunning = false;
+   var rebindRequired = false;
+   var lastSessionToken = '';
+   var lastTeamSelection = '';
+@@ -40,7 +41,7 @@
      value: Object.freeze({
        capabilityVersion: 1,
        openWorkbench: function () {
@@ -2449,7 +2457,7 @@ index 92a2e6d..480974c 100644
        }
      }),
      configurable: false,
-@@ -103,6 +103,105 @@
+@@ -103,24 +104,229 @@
      return true;
    }
  
@@ -2509,14 +2517,98 @@ index 92a2e6d..480974c 100644
 +    } catch (_error) {}
 +  }
 +
++  function runtimeDeviceNotAuthorized(error) {
++    return Number(error && error.status || 0) === 403 &&
++      String(error && error.code || '') === 'runtime_device_not_authorized';
++  }
++
++  async function waitForSyncIdle() {
++    var deadline = Date.now() + 5000;
++    while (syncRunning && Date.now() < deadline) {
++      await new Promise(function (resolve) { window.setTimeout(resolve, 100); });
++    }
++  }
++
++  async function activateAgentInstallation(installation, token) {
++    await waitForSyncIdle();
++    agentActivationRunning = true;
++    try {
++      var teamData = await apiRequest('/me/teams', {}, token);
++      var teams = Array.isArray(teamData && teamData.items) ? teamData.items : [];
++      if (!teams.length) {
++        throw Object.assign(new Error('Join an active team to use the AI Workbench'), {
++          status: 403,
++          code: 'no_active_team'
++        });
++      }
++
++      var status = await invoke('get_sync_status').catch(function () { return null; });
++      if (status && status.employee_id && status.employee_id !== teamData.employee_id) {
++        await invoke('clear_sync');
++        status = null;
++      }
++      var statusTeam = status && status.team_id && teams.some(function (team) {
++        return team.team_id === status.team_id;
++      }) ? status.team_id : '';
++      var teamId = statusTeam || selectedTeam(teams);
++      if (!teamId) {
++        throw Object.assign(new Error('Select the current team before opening the AI Workbench'), {
++          status: 409,
++          code: 'team_selection_required'
++        });
++      }
++
++      var platform = desktopPlatform();
++      var enrollment = await apiRequest('/devices/auto-enroll', {
++        method: 'POST',
++        headers: { 'X-Team-ID': teamId },
++        body: JSON.stringify({
++          installation_id: String(installation || ''),
++          device_name: 'Claritide ' + platform,
++          platform: platform
++        })
++      }, token);
++      window.localStorage.setItem(DEVICE_KEY, String(enrollment.device.device_id));
++      await invoke('configure_sync', {
++        config: {
++          server_url: TRUSTED_ORIGIN,
++          local_api_url: 'http://localhost:5600/api/0',
++          device_id: enrollment.device.device_id,
++          employee_id: enrollment.device.employee_id,
++          team_id: enrollment.device.team_id,
++          device_key: enrollment.credentials.device_token,
++          hmac_secret: enrollment.credentials.hmac_secret
++        }
++      });
++      rebindRequired = false;
++      lastSessionToken = token;
++      lastTeamSelection = window.localStorage.getItem(TEAM_KEY) || '';
++      lastNativeTriggerAt = Date.now();
++      setSyncState('connecting', copy('正在连接当前电脑。', 'Connecting this computer.'));
++      window.setTimeout(function () { ensureDesktopSync(true); }, 1800);
++    } finally {
++      agentActivationRunning = false;
++    }
++  }
++
++  async function agentRuntimeConfig(installation, token) {
++    var query = '?installation_id=' + encodeURIComponent(String(installation || ''));
++    try {
++      return await apiRequest('/me/ai/runtime-config' + query, {}, token);
++    } catch (error) {
++      if (!runtimeDeviceNotAuthorized(error)) throw error;
++      await activateAgentInstallation(installation, token);
++      return apiRequest('/me/ai/runtime-config' + query, {}, token);
++    }
++  }
++
 +  async function openAgentWorkbench() {
 +    var token = sessionToken();
 +    if (!token) {
 +      throw Object.assign(new Error('Sign-in required'), { status: 401 });
 +    }
 +    var installation = await installationId();
-+    var query = '?installation_id=' + encodeURIComponent(String(installation || ''));
-+    var config = await apiRequest('/me/ai/runtime-config' + query);
++    var config = await agentRuntimeConfig(installation, token);
 +    if (!config || config.enabled !== true) {
 +      throw Object.assign(new Error('AI runtime is not enabled'), {
 +        status: 403,
@@ -2552,23 +2644,64 @@ index 92a2e6d..480974c 100644
 +    }
 +  }
 +
++  function launchAgentWorkbench(button, event) {
++    if (event) {
++      event.preventDefault();
++      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
++      else event.stopPropagation();
++    }
++    if (button.disabled) return;
++    button.disabled = true;
++    var clearTransition = showAgentWorkbenchTransition();
++    openAgentWorkbench().then(function () {
++      clearTransition();
++      button.disabled = false;
++    }).catch(function (error) {
++      clearTransition();
++      button.disabled = false;
++      showDesktopError(agentRuntimeErrorMessage(error));
++    });
++  }
++
    function ensureAgentWorkbenchEntry() {
      var nav = document.querySelector('.global-nav');
      if (!nav) return null;
-@@ -114,9 +213,13 @@
-       button.addEventListener('click', function (event) {
-         event.preventDefault();
-         event.stopPropagation();
+-    var button = document.getElementById('navAgentWorkbench');
++    var assistantButton = document.getElementById('navAssistant');
++    var generatedButton = document.getElementById('navAgentWorkbench');
++    var button = assistantButton || generatedButton;
++    if (assistantButton && generatedButton && generatedButton !== assistantButton && generatedButton.parentNode) {
++      generatedButton.parentNode.removeChild(generatedButton);
++    }
+     if (!button) {
+       button = document.createElement('button');
+       button.id = 'navAgentWorkbench';
+       button.type = 'button';
+-      button.addEventListener('click', function (event) {
+-        event.preventDefault();
+-        event.stopPropagation();
 -        invoke('open_agent_workbench').catch(function (error) {
 -          showDesktopError(copy('无法打开 AI 工作台：', 'Unable to open AI Workbench: ') +
 -            String(error && error.message ? error.message : error));
-+        if (button.disabled) return;
-+        button.disabled = true;
-+        var clearTransition = showAgentWorkbenchTransition();
-+        openAgentWorkbench().catch(function (error) {
-+          clearTransition();
-+          button.disabled = false;
-+          showDesktopError(agentRuntimeErrorMessage(error));
-         });
-       });
+-        });
+-      });
        nav.appendChild(button);
+     }
++    if (button.dataset.claritideAgentEntry !== '1') {
++      button.dataset.claritideAgentEntry = '1';
++      button.addEventListener('click', function (event) {
++        launchAgentWorkbench(button, event);
++      }, true);
++    }
+     button.hidden = false;
+     button.textContent = copy('AI 工作台', 'AI Workbench');
+     button.setAttribute('aria-label', button.textContent);
+@@ -398,7 +604,7 @@
+   }
+ 
+   async function ensureDesktopSync(force) {
+-    if (loggingOut) return;
++    if (loggingOut || agentActivationRunning) return;
+     var token = sessionToken();
+     var teamSelection = window.localStorage.getItem(TEAM_KEY) || '';
+     if (syncRunning) {
