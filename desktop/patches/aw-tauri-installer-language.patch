@@ -1,0 +1,321 @@
+diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
+index feec3fa..4526f2b 100644
+--- a/src-tauri/src/agent_workbench.rs
++++ b/src-tauri/src/agent_workbench.rs
+@@ -17,11 +17,18 @@ pub(crate) fn main_navigation_allowed(url: &Url) -> bool {
+     )
+ }
+ 
+-pub fn open(app: &AppHandle) -> Result<(), String> {
++fn normalized_locale(locale: Option<&str>) -> &'static str {
++    match locale.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
++        Some("en") | Some("en-us") | Some("english") => "en",
++        _ => "zh-CN",
++    }
++}
++
++pub fn open(app: &AppHandle, locale: Option<&str>) -> Result<(), String> {
+     let window = app
+         .get_webview_window(WINDOW_LABEL)
+         .ok_or_else(|| "Claritide main window is unavailable".to_string())?;
+-    let url = format!("{URI_SCHEME}://localhost/")
++    let url = format!("{URI_SCHEME}://localhost/?locale={}", normalized_locale(locale))
+         .parse()
+         .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
+     window
+@@ -35,7 +42,15 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::main_navigation_allowed;
++    use super::{main_navigation_allowed, normalized_locale};
++
++    #[test]
++    fn workbench_locale_is_strictly_normalized() {
++        assert_eq!(normalized_locale(Some("en-US")), "en");
++        assert_eq!(normalized_locale(Some("zh-CN")), "zh-CN");
++        assert_eq!(normalized_locale(Some("../../en")), "zh-CN");
++        assert_eq!(normalized_locale(None), "zh-CN");
++    }
+ 
+     #[test]
+     fn main_window_navigation_allows_only_claritide_surfaces() {
+@@ -61,8 +76,8 @@ mod tests {
+ }
+ 
+ #[tauri::command]
+-pub async fn open_agent_workbench(app: AppHandle) -> Result<(), String> {
+-    open(&app).map_err(|error| {
++pub async fn open_agent_workbench(app: AppHandle, locale: Option<String>) -> Result<(), String> {
++    open(&app, locale.as_deref()).map_err(|error| {
+         warn!("{error}");
+         error
+     })
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 648836d..cb80e86 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -113,6 +113,28 @@ static SYNC_GENERATION: AtomicU64 = AtomicU64::new(0);
+ const DEFAULT_LOCAL_API_URL: &str = "http://localhost:5600/api/0";
+ const SEESEEYOU_WORKSPACE_URL: &str = "https://watch.sding.me/admin/my-day/?desktop=1";
+ const SEESEEYOU_BRIDGE_PROTOCOL: u32 = 2;
++const CLARITIDE_INSTALLER_LANGUAGE_FILE: &str = "claritide-installer-language.txt";
++
++fn installer_locale_from_executable(executable: &Path) -> Option<&'static str> {
++    let language_file = executable.parent()?.join(CLARITIDE_INSTALLER_LANGUAGE_FILE);
++    let value = read_to_string(language_file).ok()?;
++    match value.trim().to_ascii_lowercase().as_str() {
++        "en" | "en-us" | "english" => Some("en"),
++        "zh" | "zh-cn" | "chinesesimplified" => Some("zh-CN"),
++        _ => None,
++    }
++}
++
++fn installer_language_initialization_script() -> String {
++    let locale = env::current_exe()
++        .ok()
++        .as_deref()
++        .and_then(installer_locale_from_executable);
++    format!(
++        "Object.defineProperty(window, '__CLARITIDE_INSTALLER_LOCALE__', {{ value: {}, configurable: false, enumerable: false, writable: false }});",
++        serde_json::to_string(&locale).expect("installer locale serialization cannot fail")
++    )
++}
+ 
+ #[derive(Debug, Deserialize, Serialize)]
+ pub struct DesktopSyncConfig {
+@@ -1736,6 +1758,7 @@ pub fn run() {
+                 .inner_size(1180.0, 780.0)
+                 .min_inner_size(920.0, 640.0)
+                 .visible(true)
++                .initialization_script(installer_language_initialization_script())
+                 .initialization_script(include_str!("seeseeyou_bridge.js"))
+                 .initialization_script(include_str!("agent_workbench_bridge.js"))
+                 .on_navigation(agent_workbench::main_navigation_allowed)
+@@ -1958,10 +1981,12 @@ pub fn run() {
+ mod tests {
+     use super::{
+         bucket_metadata_ready, build_dashboard_url, fresh_sync_cursor_timestamp,
++        installer_locale_from_executable,
+         migrate_sync_config_local_api_url, queue_sync_trigger, validate_sync_config,
+         wait_for_local_server, DesktopSyncConfig, DEFAULT_LOCAL_API_URL, SEESEEYOU_WORKSPACE_URL,
+     };
+     use std::net::TcpListener;
++    use std::path::Path;
+     use std::sync::mpsc;
+ 
+     #[test]
+@@ -1988,6 +2013,29 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn installer_language_accepts_only_supported_locales() {
++        let root = std::env::temp_dir().join(format!(
++            "claritide-installer-language-{}",
++            std::process::id()
++        ));
++        std::fs::create_dir_all(&root).unwrap();
++        let executable = root.join("aw-tauri.exe");
++        let language_file = root.join("claritide-installer-language.txt");
++
++        std::fs::write(&language_file, "english\n").unwrap();
++        assert_eq!(installer_locale_from_executable(Path::new(&executable)), Some("en"));
++        std::fs::write(&language_file, "zh-CN\n").unwrap();
++        assert_eq!(
++            installer_locale_from_executable(Path::new(&executable)),
++            Some("zh-CN")
++        );
++        std::fs::write(&language_file, "../../unsupported\n").unwrap();
++        assert_eq!(installer_locale_from_executable(Path::new(&executable)), None);
++
++        std::fs::remove_dir_all(root).unwrap();
++    }
++
+     #[test]
+     fn desktop_sync_rejects_untrusted_endpoints() {
+         let config = DesktopSyncConfig {
+diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
+index a8fc44a..0ef2fe5 100644
+--- a/src-tauri/src/seeseeyou_bridge.js
++++ b/src-tauri/src/seeseeyou_bridge.js
+@@ -8,6 +8,7 @@
+   var TOKEN_KEYS = ['usage_admin_token', 'my_day_session_token'];
+   var TEAM_KEY = 'my_day_selected_team_id';
+   var DEVICE_KEY = 'seeseeyou_desktop_device_id';
++  var INSTALLER_LOCALE_KEY = 'claritide_installer_locale_applied';
+   var syncRunning = false;
+   var syncRerunRequested = false;
+   var syncClearPending = false;
+@@ -38,7 +39,9 @@
+   Object.defineProperty(window, '__CLARITIDE_AGENT_DESKTOP__', {
+     value: Object.freeze({
+       capabilityVersion: 1,
+-      openWorkbench: function () { return invoke('open_agent_workbench'); }
++      openWorkbench: function () {
++        return invoke('open_agent_workbench', { locale: isEnglish() ? 'en' : 'zh-CN' });
++      }
+     }),
+     configurable: false,
+     enumerable: false,
+@@ -69,6 +72,37 @@
+     return isEnglish() ? en : zh;
+   }
+ 
++  function normalizedInstallerLocale(value) {
++    value = String(value || '').trim().toLowerCase();
++    if (value === 'en' || value === 'en-us' || value === 'english') return 'en';
++    if (value === 'zh' || value === 'zh-cn' || value === 'chinesesimplified') return 'zh-CN';
++    return '';
++  }
++
++  function applyInstallerLanguagePreference() {
++    var desired = normalizedInstallerLocale(window.__CLARITIDE_INSTALLER_LOCALE__);
++    if (!desired) return true;
++    try {
++      if (window.localStorage.getItem(INSTALLER_LOCALE_KEY) === desired) return true;
++    } catch (_error) {}
++
++    var current = isEnglish() ? 'en' : 'zh-CN';
++    if (current !== desired) {
++      var toggle = document.querySelector('[data-language-toggle]');
++      if (!toggle || typeof toggle.click !== 'function') return false;
++      try {
++        window.localStorage.setItem(INSTALLER_LOCALE_KEY, desired);
++      } catch (_error) {}
++      toggle.click();
++      return true;
++    }
++
++    try {
++      window.localStorage.setItem(INSTALLER_LOCALE_KEY, desired);
++    } catch (_error) {}
++    return true;
++  }
++
+   function ensureAgentWorkbenchEntry() {
+     var nav = document.querySelector('.global-nav');
+     if (!nav) return null;
+@@ -916,6 +950,7 @@
+   }, true);
+ 
+   document.addEventListener('DOMContentLoaded', function () {
++    applyInstallerLanguagePreference();
+     brandDesktopWorkspace();
+     ensureAgentWorkbenchEntry();
+     ensureSyncBadge();
+@@ -930,6 +965,7 @@
+     ensureDesktopSync(true);
+   });
+   window.setInterval(function () {
++    applyInstallerLanguagePreference();
+     ensureAgentWorkbenchEntry();
+     ensureDesktopSync(false);
+   }, 5000);
+@@ -947,6 +983,7 @@
+       recentSuccessfulUpload: recentSuccessfulUpload,
+       desktopTelegramBind: desktopTelegramBind,
+       ensureAgentWorkbenchEntry: ensureAgentWorkbenchEntry,
++      applyInstallerLanguagePreference: applyInstallerLanguagePreference,
+       getSyncViewState: function () {
+         return { state: currentSyncState, detail: currentSyncDetail };
+       }
+--- a/src-tauri/assets/agent-workbench.html
++++ b/src-tauri/assets/agent-workbench.html
+@@ -53,21 +53,43 @@
+       var WORKSPACE_URL='https://watch.sding.me/';
+       var STORAGE_KEY='claritide.agent.projects.v1';
+       var bridge=window.__CLARITIDE_CCB__;
++      var locale=new URLSearchParams(window.location.search).get('locale')==='en'?'en':'zh-CN';
++      var english=locale==='en';
++      var EN={
++        '工作空间 · 本地 Agent':'Workspace · Local Agent','主导航':'Main navigation','我的今天':'My Day','团队工作':'Team Work','日历会议':'Calendar','日报':'Reports','AI 工作台':'AI Workbench','正在检查运行时':'Checking runtime','返回工作空间':'Back to workspace','项目与会话':'Projects and sessions','新建项目':'New project','新建会话':'New session','搜索项目或会话':'Search projects or sessions','我的项目':'My projects','先创建项目并选择本地文件夹。':'Create a project and select a local folder first.','会话会保存在对应项目中。':'Sessions are saved in their project.','请选择项目并创建会话':'Select a project and create a session','模型':'Model','权限模式':'Permission mode','受控访问':'Controlled','只读访问':'Read only','完全访问':'Full access','运行记录':'Activity','从一个项目开始':'Start with a project','选择真实文件夹，创建项目，再把每次 Agent 对话放进项目中。模型、工作目录和权限都在会话开始前确认。':'Select a real folder, create a project, and keep each Agent conversation inside it. Confirm the model, working directory, and permissions before the session starts.','描述要完成的任务；Enter 换行，Ctrl + Enter 发送':'Describe the task; Enter for a new line, Ctrl + Enter to send','尚未选择项目会话':'No project session selected','停止':'Stop','发送指令':'Send','运行位置':'Run location','Local 当前目录':'Local current directory','0 条':'0 items','收起':'Collapse','事件':'Events','变更':'Changes','Agent 的读取、分析、工具请求和完成状态会显示在这里。':'Agent reads, analysis, tool requests, and completion status appear here.','当前安全运行时暂不提供文件变更明细。启用可审查的写入工具后，这里会展示 diff、测试结果与接受/撤销操作。':'The current secure runtime does not expose file-change details yet. Once reviewable write tools are enabled, this area will show diffs, test results, and accept/revert actions.','未绑定本地项目':'No local project linked','等待开始':'Ready','创建本地项目':'Create local project','关闭':'Close','项目绑定真实文件夹。Claritide 只把本次由系统文件选择器授权的目录交给本地 Agent。':'A project links to a real folder. Claritide only gives the local Agent access to the directory authorized through the system folder picker.','项目名称':'Project name','例如：Claritide 桌面端':'Example: Claritide desktop','本地文件夹':'Local folder','尚未选择':'Not selected','选择文件夹':'Choose folder','取消':'Cancel','创建项目':'Create project','在项目中创建会话':'Create session in project','项目':'Project','会话名称':'Session name','例如：检查桌面端发布流程':'Example: Review desktop release flow','权限':'Permission','创建并进入':'Create and open','授予完全访问？':'Grant full access?','这是高风险权限。':'This is a high-risk permission.','确认后会启用 CCB 的真实权限绕过模式。Agent 可以读写或删除文件（包括项目目录外）、执行命令、访问网络，并可能执行 Git Push 或发布操作。授权仅在本次应用运行期间对当前会话有效，重启应用后自动恢复为受控访问。请仅对可信项目启用。':'This enables CCB permission bypass. The Agent may read, write, or delete files (including outside the project), run commands, access the network, and may perform Git Push or release operations. Access applies only to this session during the current app run and returns to Controlled after restart. Enable it only for trusted projects.','仅本会话授权':'Allow for this session','展开':'Expand','运行时未配置':'Runtime not configured','Ctrl + Enter 发送':'Ctrl + Enter to send','Agent 正在执行':'Agent is running','会话已就绪':'Session ready','我':'Me','条':'items','开始任务':'Task started','错误':'Error','本地桥接不可用':'Local bridge unavailable','新项目':'New project','运行时检查失败':'Runtime check failed','请先停止当前执行':'Stop the current run first','项目已创建，请创建第一个会话':'Project created. Create the first session.','请先创建或选择项目':'Create or select a project first','请选择项目并填写会话名称':'Select a project and enter a session name','会话已创建，完全访问已启用':'Session created. Full access enabled.','会话已创建':'Session created','权限模式已更新':'Permission mode updated','已为本会话启用完全访问':'Full access enabled for this session','未选择项目会话':'No project session selected','完全访问需要在本次应用运行期间重新确认':'Full access must be confirmed again during this app run','需要重新授权项目文件夹':'The project folder must be authorized again','已发送停止请求':'Stop request sent'
++      };
+       var state={projects:[],activeProjectId:'',activeSessionId:'',nativeSessionId:'',turnActive:false,status:null,pendingWorkspace:null,pendingFullAccess:null,fullAccessGrants:{}};
+       var $=function(selector,root){return (root||document).querySelector(selector)};
+       var $$=function(selector,root){return Array.prototype.slice.call((root||document).querySelectorAll(selector))};
+       var toastTimer;
+ 
++      document.documentElement.lang=locale;
++      document.title=english?'Claritide · AI Workbench':'Claritide · AI 工作台';
++      function tr(value){value=String(value==null?'':value);return english&&(EN[value]||EN[value.trim()])||value}
++      function translateMessage(value){
++        value=String(value==null?'':value);if(!english)return value;
++        var prefixes={'选择文件夹失败：':'Failed to choose folder: ','发送失败：':'Failed to send: ','停止失败：':'Failed to stop: '};
++        for(var prefix in prefixes){if(value.indexOf(prefix)===0)return prefixes[prefix]+value.slice(prefix.length)}
++        return tr(value)
++      }
++      function translateTree(root){
++        if(!english||!root)return;
++        if(root.nodeType===3){var raw=root.nodeValue||'',trimmed=raw.trim();if(EN[trimmed])root.nodeValue=raw.replace(trimmed,EN[trimmed]);return}
++        if(root.nodeType!==1)return;
++        ['placeholder','aria-label','title'].forEach(function(name){var value=root.getAttribute&&root.getAttribute(name);if(value&&EN[value])root.setAttribute(name,EN[value])});
++        Array.prototype.slice.call(root.childNodes||[]).forEach(translateTree)
++      }
++
+       function uid(prefix){return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)}
+       function safeText(value){return String(value==null?'':value)}
+-      function showToast(message){var node=$('#toast');node.textContent=message;node.classList.add('visible');window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){node.classList.remove('visible')},2200)}
++      function showToast(message){var node=$('#toast');node.textContent=translateMessage(message);node.classList.add('visible');window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){node.classList.remove('visible')},2200)}
+       function openModal(id){$('#'+id).classList.add('open')}
+       function closeModal(id){$('#'+id).classList.remove('open')}
+       function load(){try{var parsed=JSON.parse(window.localStorage.getItem(STORAGE_KEY)||'[]');state.projects=Array.isArray(parsed)?parsed:[];state.projects.forEach(function(project){(project.sessions||[]).forEach(function(session){if(session.permission==='full')session.permission='controlled'})})}catch(_error){state.projects=[]}}
+       function save(){window.localStorage.setItem(STORAGE_KEY,JSON.stringify(state.projects.map(function(project){return{id:project.id,name:project.name,path:project.path,sessions:project.sessions||[]}})))}
+       function activeProject(){return state.projects.find(function(project){return project.id===state.activeProjectId})||null}
+       function activeSession(){var project=activeProject();return project&&(project.sessions||[]).find(function(session){return session.id===state.activeSessionId})||null}
+-      function formatTime(value){try{return new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(_error){return''}}
++      function formatTime(value){try{return new Date(value).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit'})}catch(_error){return''}}
+ 
+       function renderProjects(){
+         var host=$('#projectList');$$('.project',host).forEach(function(node){node.remove()});
+@@ -78,7 +100,7 @@
+           if(query&&searchable.indexOf(query)<0)return;
+           var section=document.createElement('section');section.className='project';
+           var row=document.createElement('button');row.className='project-row'+(project.id===state.activeProjectId?' active':'');row.type='button';
+-          var dot=document.createElement('span');dot.className='project-dot';var copy=document.createElement('span');var name=document.createElement('span');name.className='project-name';name.textContent=project.name;var path=document.createElement('span');path.className='project-path';path.textContent=project.path;copy.appendChild(name);copy.appendChild(path);var arrow=document.createElement('span');arrow.className='chevron';arrow.textContent=project.id===state.activeProjectId?'收起':'展开';row.appendChild(dot);row.appendChild(copy);row.appendChild(arrow);
++          var dot=document.createElement('span');dot.className='project-dot';var copy=document.createElement('span');var name=document.createElement('span');name.className='project-name';name.textContent=project.name;var path=document.createElement('span');path.className='project-path';path.textContent=project.path;copy.appendChild(name);copy.appendChild(path);var arrow=document.createElement('span');arrow.className='chevron';arrow.textContent=tr(project.id===state.activeProjectId?'收起':'展开');row.appendChild(dot);row.appendChild(copy);row.appendChild(arrow);
+           row.addEventListener('click',function(){state.activeProjectId=project.id;state.activeSessionId='';renderProjects();syncControls()});section.appendChild(row);
+           if(project.id===state.activeProjectId){var list=document.createElement('div');list.className='session-list';(project.sessions||[]).forEach(function(session){var button=document.createElement('button');button.className='session-row'+(session.id===state.activeSessionId?' active':'');button.type='button';var title=document.createElement('span');title.className='session-title';title.textContent=session.name;var time=document.createElement('span');time.className='session-time';time.textContent=formatTime(session.updatedAt);button.appendChild(title);button.appendChild(time);button.addEventListener('click',function(event){event.stopPropagation();selectSession(project.id,session.id)});list.appendChild(button)});section.appendChild(list)}
+           host.appendChild(section)
+@@ -91,14 +113,14 @@
+       function syncControls(){
+         var project=activeProject(),session=activeSession(),ready=Boolean(project&&session),runtimeReady=Boolean(state.status&&state.status.available);
+         $('#newSession').disabled=!project;$('#prompt').disabled=!ready||!runtimeReady;$('#send').disabled=!ready||!runtimeReady||state.turnActive;$('#stop').disabled=!state.turnActive;$('#runLocation').disabled=!ready;$('#bottomModel').disabled=!ready||state.nativeSessionId;$('#bottomPermission').disabled=!ready||state.nativeSessionId;
+-        $('#sessionHeading').textContent=session?project.name+' / '+session.name:'AI 工作台';$('#sessionMeta').textContent=session?project.path:'请选择项目并创建会话';$('#composerHint').textContent=!runtimeReady?'运行时未配置':ready?'Ctrl + Enter 发送':'尚未选择项目会话';$('#workspaceStatus').textContent=project?project.path:'未绑定本地项目';$('#turnStatus').textContent=state.turnActive?'Agent 正在执行':state.nativeSessionId?'会话已就绪':'等待开始';
++        $('#sessionHeading').textContent=session?project.name+' / '+session.name:tr('AI 工作台');$('#sessionMeta').textContent=session?project.path:tr('请选择项目并创建会话');$('#composerHint').textContent=tr(!runtimeReady?'运行时未配置':ready?'Ctrl + Enter 发送':'尚未选择项目会话');$('#workspaceStatus').textContent=project?project.path:tr('未绑定本地项目');$('#turnStatus').textContent=tr(state.turnActive?'Agent 正在执行':state.nativeSessionId?'会话已就绪':'等待开始');
+         if(session){$('#topModel').value=session.model;$('#bottomModel').value=session.model;$('#topPermission').value=session.permission;$('#bottomPermission').value=session.permission}
+       }
+ 
+       function clearConversation(){var host=$('#conversation');host.textContent=''}
+       function renderConversation(){var session=activeSession();clearConversation();if(!session){var welcome=document.createElement('div');welcome.className='welcome';welcome.innerHTML='<div class="welcome-card"><div class="welcome-mark">AI</div><h1>从一个项目开始</h1><p>选择真实文件夹，创建项目，再把每次 Agent 对话放进项目中。模型、工作目录和权限都在会话开始前确认。</p></div>';$('#conversation').appendChild(welcome);return}(session.messages||[]).forEach(function(message){appendMessage(message.role,message.text,message.time,false)});$('#conversation').scrollTop=$('#conversation').scrollHeight}
+-      function appendMessage(role,text,time,persist){var article=document.createElement('article');article.className='message '+(role==='user'?'user':'agent');var avatar=document.createElement('div');avatar.className='avatar';avatar.textContent=role==='user'?'我':'AI';var content=document.createElement('div');var head=document.createElement('div');head.className='message-head';var author=document.createElement('strong');author.textContent=role==='user'?'我':'Claritide Agent';var stamp=document.createElement('span');stamp.textContent=formatTime(time||Date.now());head.appendChild(author);head.appendChild(stamp);var body=document.createElement('div');body.className='message-body';body.textContent=safeText(text);content.appendChild(head);content.appendChild(body);article.appendChild(avatar);article.appendChild(content);$('#conversation').appendChild(article);if(persist){var session=activeSession();session.messages=session.messages||[];session.messages.push({role:role,text:safeText(text),time:time||Date.now()});session.updatedAt=Date.now();save()}return body}
+-      function addEvent(kind,detail){$('#eventEmpty').hidden=true;var item=document.createElement('div');item.className='log-item';var title=document.createElement('strong');title.textContent=kind;var copy=document.createElement('p');copy.textContent=safeText(detail);item.appendChild(title);item.appendChild(copy);$('#eventLog').appendChild(item);var count=$$('#eventLog .log-item').length;$('#eventCount').textContent=count+' 条';$('#eventsView').scrollTop=$('#eventsView').scrollHeight}
++      function appendMessage(role,text,time,persist){var article=document.createElement('article');article.className='message '+(role==='user'?'user':'agent');var avatar=document.createElement('div');avatar.className='avatar';avatar.textContent=role==='user'?tr('我'):'AI';var content=document.createElement('div');var head=document.createElement('div');head.className='message-head';var author=document.createElement('strong');author.textContent=role==='user'?tr('我'):'Claritide Agent';var stamp=document.createElement('span');stamp.textContent=formatTime(time||Date.now());head.appendChild(author);head.appendChild(stamp);var body=document.createElement('div');body.className='message-body';body.textContent=safeText(text);content.appendChild(head);content.appendChild(body);article.appendChild(avatar);article.appendChild(content);$('#conversation').appendChild(article);if(persist){var session=activeSession();session.messages=session.messages||[];session.messages.push({role:role,text:safeText(text),time:time||Date.now()});session.updatedAt=Date.now();save()}return body}
++      function addEvent(kind,detail){$('#eventEmpty').hidden=true;var item=document.createElement('div');item.className='log-item';var title=document.createElement('strong');title.textContent=tr(kind);var copy=document.createElement('p');copy.textContent=safeText(detail);item.appendChild(title);item.appendChild(copy);$('#eventLog').appendChild(item);var count=$$('#eventLog .log-item').length;$('#eventCount').textContent=count+' '+tr('条');$('#eventsView').scrollTop=$('#eventsView').scrollHeight}
+ 
+       function selectSession(projectId,sessionId){if(state.turnActive){showToast('请先停止当前执行');return}state.activeProjectId=projectId;state.activeSessionId=sessionId;state.nativeSessionId='';renderProjects();renderConversation();syncControls()}
+       async function chooseWorkspace(){if(!bridge)return showToast('本地桥接不可用');try{var workspace=await bridge.selectWorkspace();if(!workspace)return;state.pendingWorkspace=workspace;$('#projectPath').value=workspace.path||workspace.name||'';if(!$('#projectName').value)$('#projectName').value=workspace.name||'新项目';$('#createProject').disabled=false}catch(error){showToast('选择文件夹失败：'+safeText(error&&error.message||error))}}
+@@ -110,7 +132,7 @@
+       function cancelFullAccess(){state.pendingFullAccess=null;closeModal('fullAccessModal');syncControls()}
+       function confirmFullAccess(){var pending=state.pendingFullAccess;state.pendingFullAccess=null;closeModal('fullAccessModal');if(!pending)return syncControls();if(pending.kind==='create'){commitSession('full');return}var session=activeSession();if(!session||session.id!==pending.sessionId)return syncControls();session.permission='full';state.fullAccessGrants[session.id]=true;save();syncControls();showToast('已为本会话启用完全访问')}
+ 
+-      async function ensureNativeSession(){if(state.nativeSessionId)return state.nativeSessionId;var project=activeProject(),session=activeSession();if(!project||!session)throw new Error('未选择项目会话');if(session.permission==='full'&&!state.fullAccessGrants[session.id])throw new Error('完全访问需要在本次应用运行期间重新确认');if(!project.nativeWorkspace){var workspace=await bridge.selectWorkspace();if(!workspace)throw new Error('需要重新授权项目文件夹');project.nativeWorkspace=workspace;project.path=workspace.path||project.path;save();renderProjects()}var id=crypto.randomUUID();await bridge.startSession({clientSessionId:id,workspace:project.nativeWorkspace.id,model:session.model,permission:session.permission,locale:'zh-CN'});state.nativeSessionId=id;syncControls();return id}
++      async function ensureNativeSession(){if(state.nativeSessionId)return state.nativeSessionId;var project=activeProject(),session=activeSession();if(!project||!session)throw new Error(tr('未选择项目会话'));if(session.permission==='full'&&!state.fullAccessGrants[session.id])throw new Error(tr('完全访问需要在本次应用运行期间重新确认'));if(!project.nativeWorkspace){var workspace=await bridge.selectWorkspace();if(!workspace)throw new Error(tr('需要重新授权项目文件夹'));project.nativeWorkspace=workspace;project.path=workspace.path||project.path;save();renderProjects()}var id=crypto.randomUUID();await bridge.startSession({clientSessionId:id,workspace:project.nativeWorkspace.id,model:session.model,permission:session.permission,locale:locale});state.nativeSessionId=id;syncControls();return id}
+       async function send(){var value=$('#prompt').value.trim();if(!value||state.turnActive)return;try{var id=await ensureNativeSession();appendMessage('user',value,Date.now(),true);$('#prompt').value='';state.turnActive=true;syncControls();addEvent('开始任务',value);await bridge.send({sessionId:id,content:value})}catch(error){state.turnActive=false;syncControls();showToast('发送失败：'+safeText(error&&error.message||error));addEvent('错误',safeText(error&&error.message||error))}}
+       async function stop(){if(!state.nativeSessionId||!state.turnActive)return;try{await bridge.stop({sessionId:state.nativeSessionId});showToast('已发送停止请求')}catch(error){showToast('停止失败：'+safeText(error&&error.message||error))}}
+       async function returnToWorkspace(){if(state.nativeSessionId){try{await bridge.close({sessionId:state.nativeSessionId})}catch(_error){}}window.location.assign(WORKSPACE_URL)}
+@@ -125,10 +147,12 @@
+       }
+ 
+       async function init(){
++        translateTree(document.body);
++        if(english&&window.MutationObserver){new MutationObserver(function(records){records.forEach(function(record){Array.prototype.slice.call(record.addedNodes||[]).forEach(translateTree)})}).observe(document.body,{childList:true,subtree:true})}
+         load();bind();renderProjects();renderConversation();
+-        if(!bridge){$('#runtimeStatus').textContent='本地桥接不可用';syncControls();return}
++        if(!bridge){$('#runtimeStatus').textContent=tr('本地桥接不可用');syncControls();return}
+         bridge.onEvent(handleEvent);
+-        try{state.status=await bridge.getStatus();$('#runtimeStatus').textContent=state.status.available?'Agent 已就绪 · '+state.status.toolsMode:'运行时未配置';fillModels(state.status.allowedModels||[])}catch(error){state.status={available:false};$('#runtimeStatus').textContent='运行时检查失败';addEvent('错误',safeText(error&&error.message||error))}
++        try{state.status=await bridge.getStatus();$('#runtimeStatus').textContent=state.status.available?(english?'Agent ready · ':'Agent 已就绪 · ')+state.status.toolsMode:tr('运行时未配置');fillModels(state.status.allowedModels||[])}catch(error){state.status={available:false};$('#runtimeStatus').textContent=tr('运行时检查失败');addEvent('错误',safeText(error&&error.message||error))}
+         syncControls()
+       }
+       void init();

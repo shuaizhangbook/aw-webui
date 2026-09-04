@@ -11,12 +11,15 @@ on:
       - 'desktop/patches/aw-tauri-agent-same-window.patch'
       - 'desktop/patches/aw-tauri-agent-full-access.patch'
       - 'desktop/patches/aw-tauri-agent-bundled-runtime.patch'
+      - 'desktop/patches/aw-tauri-installer-language.patch'
+      - 'desktop/aw-tauri.iss'
       - 'desktop/scripts/prepare-ccb-runtime.sh'
       - 'desktop/workbench/**'
       - 'desktop/tests/agent_workbench_bridge.test.cjs'
       - 'desktop/tests/agent_workbench_html.test.cjs'
       - 'desktop/tests/seeseeyou_bridge.test.cjs'
       - 'desktop/tests/agent_nav_entry.test.cjs'
+      - 'desktop/tests/installer_language.test.cjs'
       - 'desktop/tests/fixtures/**'
 
 permissions:
@@ -119,6 +122,10 @@ jobs:
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-bundled-runtime.patch"
           git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-bundled-runtime.patch"
+          git -C activitywatch/aw-tauri apply --check \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-installer-language.patch"
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-installer-language.patch"
           cmp custom-webui/desktop/workbench/agent-workbench.html \
             activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html
           cmp custom-webui/desktop/workbench/agent_workbench_bridge.js \
@@ -143,6 +150,8 @@ jobs:
             node --test custom-webui/desktop/tests/seeseeyou_bridge.test.cjs
           SEESEEYOU_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js" \
             node --test custom-webui/desktop/tests/agent_nav_entry.test.cjs
+          CLARITIDE_INSTALLER_SCRIPT="$GITHUB_WORKSPACE/custom-webui/desktop/aw-tauri.iss" \
+            node --test custom-webui/desktop/tests/installer_language.test.cjs
           CLARITIDE_AGENT_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/agent_workbench_bridge.js" \
             node --test custom-webui/desktop/tests/agent_workbench_bridge.test.cjs
           CLARITIDE_AGENT_HTML_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html" \

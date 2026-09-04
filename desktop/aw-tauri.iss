@@ -60,3 +60,23 @@ Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  AppLanguage: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if CompareText(ActiveLanguage, 'english') = 0 then
+      AppLanguage := 'en'
+    else
+      AppLanguage := 'zh-CN';
+
+    SaveStringToFile(
+      ExpandConstant('{app}\claritide-installer-language.txt'),
+      AppLanguage,
+      False
+    );
+  end;
+end;

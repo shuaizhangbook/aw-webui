@@ -14,7 +14,7 @@ test('desktop bridge exposes a visible localized AI Workbench entry', () => {
   assert.match(source, /document\.querySelector\('\.global-nav'\)/);
   assert.match(source, /button\.id = 'navAgentWorkbench'/);
   assert.match(source, /copy\('AI 工作台', 'AI Workbench'\)/);
-  assert.match(source, /invoke\('open_agent_workbench'\)/);
+  assert.match(source, /invoke\('open_agent_workbench', \{ locale: isEnglish\(\) \? 'en' : 'zh-CN' \}\)/);
 });
 
 test('AI Workbench entry survives initial render and language changes', () => {

@@ -11,12 +11,16 @@ if (!htmlPath) {
 const html = fs.readFileSync(htmlPath, 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
 
-test('workbench is a Chinese, deny-by-default local document', () => {
+test('workbench is a bilingual, deny-by-default local document', () => {
   assert.match(html, /<html lang="zh-CN">/);
   assert.match(html, /Content-Security-Policy[^>]+default-src 'none'/);
   assert.equal(scripts.length, 1);
   assert.doesNotThrow(() => new vm.Script(scripts[0], { filename: 'agent-workbench-inline.js' }));
   assert.doesNotMatch(html, /https:\/\/(fonts\.googleapis|cdn\.jsdelivr)/);
+  assert.match(html, /locale=new URLSearchParams\(window\.location\.search\)/);
+  assert.match(html, /'AI 工作台':'AI Workbench'/);
+  assert.match(html, /document\.documentElement\.lang=locale/);
+  assert.match(html, /locale:locale/);
 });
 
 test('approved project and session hierarchy is present', () => {
