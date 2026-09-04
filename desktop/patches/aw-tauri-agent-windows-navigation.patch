@@ -1,0 +1,87 @@
+diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
+index 702a937..8a0fde0 100644
+--- a/src-tauri/assets/agent-workbench.html
++++ b/src-tauri/assets/agent-workbench.html
+@@ -50,7 +50,7 @@
+   <script>
+     (function(){
+       'use strict';
+-      var WORKSPACE_URL='https://watch.sding.me/';
++      var WORKSPACE_URL='https://watch.sding.me/admin/my-day/?desktop=1';
+       var STORAGE_KEY='claritide.agent.projects.v1';
+       var bridge=window.__CLARITIDE_CCB__;
+       var locale=new URLSearchParams(window.location.search).get('locale')==='en'?'en':'zh-CN';
+diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
+index 38dc896..d89a8f0 100644
+--- a/src-tauri/src/agent_workbench.rs
++++ b/src-tauri/src/agent_workbench.rs
+@@ -28,16 +28,22 @@ fn normalized_locale(locale: Option<&str>) -> &'static str {
+     }
+ }
+ 
++fn workbench_url(locale: Option<&str>, use_windows_protocol_mapping: bool) -> Result<Url, String> {
++    let origin = if use_windows_protocol_mapping {
++        "http://claritide-agent.localhost"
++    } else {
++        "claritide-agent://localhost"
++    };
++    format!("{origin}/?locale={}", normalized_locale(locale))
++        .parse()
++        .map_err(|error| format!("Unable to build local agent URL: {error}"))
++}
++
+ pub fn open(app: &AppHandle, locale: Option<&str>) -> Result<(), String> {
+     let window = app
+         .get_webview_window(WINDOW_LABEL)
+         .ok_or_else(|| "Claritide main window is unavailable".to_string())?;
+-    let url = format!(
+-        "{URI_SCHEME}://localhost/?locale={}",
+-        normalized_locale(locale)
+-    )
+-    .parse()
+-    .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
++    let url = workbench_url(locale, cfg!(target_os = "windows"))?;
+     window
+         .navigate(url)
+         .map_err(|error| format!("Unable to open Claritide AI Workbench: {error}"))?;
+@@ -49,7 +55,7 @@ pub fn open(app: &AppHandle, locale: Option<&str>) -> Result<(), String> {
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::{main_navigation_allowed, normalized_locale};
++    use super::{main_navigation_allowed, normalized_locale, workbench_url};
+ 
+     #[test]
+     fn workbench_locale_is_strictly_normalized() {
+@@ -59,6 +65,18 @@ mod tests {
+         assert_eq!(normalized_locale(None), "zh-CN");
+     }
+ 
++    #[test]
++    fn workbench_url_uses_the_windows_custom_protocol_mapping() {
++        assert_eq!(
++            workbench_url(Some("en"), true).unwrap().as_str(),
++            "http://claritide-agent.localhost/?locale=en"
++        );
++        assert_eq!(
++            workbench_url(Some("zh-CN"), false).unwrap().as_str(),
++            "claritide-agent://localhost/?locale=zh-CN"
++        );
++    }
++
+     #[test]
+     fn main_window_navigation_allows_only_claritide_surfaces() {
+         assert!(main_navigation_allowed(
+diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
+index 0ef2fe5..4af1800 100644
+--- a/src-tauri/src/seeseeyou_bridge.js
++++ b/src-tauri/src/seeseeyou_bridge.js
+@@ -114,7 +114,7 @@
+       button.addEventListener('click', function (event) {
+         event.preventDefault();
+         event.stopPropagation();
+-        invoke('open_agent_workbench').catch(function (error) {
++        invoke('open_agent_workbench', { locale: isEnglish() ? 'en' : 'zh-CN' }).catch(function (error) {
+           showDesktopError(copy('无法打开 AI 工作台：', 'Unable to open AI Workbench: ') +
+             String(error && error.message ? error.message : error));
+         });
