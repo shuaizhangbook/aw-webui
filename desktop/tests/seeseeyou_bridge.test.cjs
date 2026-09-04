@@ -552,3 +552,26 @@ test('desktop logout restores the session if the final native clear fails', asyn
   assert.match(button.title, /无法完成安全退出/);
   assert.match(harness.alerts[0], /locked/);
 });
+
+
+test('outdated remote pages receive a visible native Agent entry', () => {
+  const source = fs.readFileSync(bridgePath, 'utf8');
+  const start = source.indexOf('function ensureAgentNavigation()');
+  const end = source.indexOf('function sessionToken()', start);
+  assert.ok(start >= 0 && end > start);
+  const implementation = source.slice(start, end);
+
+  assert.match(implementation, /getElementById\('navAssistant'\)/);
+  assert.match(implementation, /claritideDesktopAgentNav/);
+  assert.match(implementation, /querySelector\('\.global-nav'\)/);
+  assert.match(implementation, /getElementById\('navReport'\)/);
+  assert.match(implementation, /host\.insertBefore\(button, report\.nextSibling\)/);
+  assert.match(implementation, /invoke\('open_agent_workbench'\)/);
+  assert.match(implementation, /AI 工作台/);
+  assert.match(implementation, /AI Workbench/);
+
+  assert.match(
+    source,
+    /brandDesktopWorkspace\(\);\s*ensureAgentNavigation\(\);\s*ensureSyncBadge\(\)/,
+  );
+});

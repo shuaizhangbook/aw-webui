@@ -4468,7 +4468,7 @@ new file mode 100644
 index 0000000..1b4f7c6
 --- /dev/null
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -0,0 +1,927 @@
+@@ -0,0 +1,970 @@
 +(function () {
 +  'use strict';
 +
@@ -4515,6 +4515,47 @@ index 0000000..1b4f7c6
 +    enumerable: false,
 +    writable: false
 +  });
++
++  function agentWorkbenchLabel() {
++    return copy('AI 工作台', 'AI Workbench');
++  }
++
++  function ensureAgentNavigation() {
++    if (document.getElementById('navAssistant')) return null;
++    var existing = document.getElementById('claritideDesktopAgentNav');
++    if (existing) {
++      existing.textContent = agentWorkbenchLabel();
++      existing.setAttribute('aria-label', agentWorkbenchLabel());
++      return existing;
++    }
++    var host = document.querySelector('.global-nav');
++    if (!host) return null;
++    var button = document.createElement('button');
++    button.id = 'claritideDesktopAgentNav';
++    button.type = 'button';
++    button.textContent = agentWorkbenchLabel();
++    button.setAttribute('aria-label', agentWorkbenchLabel());
++    button.setAttribute('data-desktop-agent-entry', 'true');
++    button.addEventListener('click', function (event) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      invoke('open_agent_workbench').catch(function (error) {
++        showDesktopError(
++          copy(
++            '无法打开 AI 工作台，请重启或升级 Claritide 后重试。',
++            'AI Workbench could not be opened. Restart or update Claritide and try again.'
++          ) + '\n\n' + rawErrorMessage(error)
++        );
++      });
++    }, true);
++    var report = document.getElementById('navReport');
++    if (report && report.parentNode === host) {
++      host.insertBefore(button, report.nextSibling);
++    } else {
++      host.appendChild(button);
++    }
++    return button;
++  }
 +
 +  function sessionToken() {
 +    for (var i = 0; i < TOKEN_KEYS.length; i += 1) {
@@ -5364,6 +5405,7 @@ index 0000000..1b4f7c6
 +
 +  document.addEventListener('DOMContentLoaded', function () {
 +    brandDesktopWorkspace();
++    ensureAgentNavigation();
 +    ensureSyncBadge();
 +    ensureAutostartControl();
 +    ensureDesktopSync(true);
@@ -5372,6 +5414,7 @@ index 0000000..1b4f7c6
 +    if (TOKEN_KEYS.indexOf(event.key) >= 0 || event.key === TEAM_KEY) ensureDesktopSync(true);
 +  });
 +  window.addEventListener('work-i18n-change', function () {
++    ensureAgentNavigation();
 +    ensureDesktopSync(true);
 +  });
 +  window.setInterval(function () {
