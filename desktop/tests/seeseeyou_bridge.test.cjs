@@ -153,6 +153,73 @@ test('remote workspace receives only the isolated agent-window opener', async ()
   assert.equal(harness.agentDesktop.selectWorkspace, undefined);
 });
 
+test('AI Workbench activates an unauthorized desktop installation and retries once', async () => {
+  const invokeCalls = [];
+  const fetchCalls = [];
+  let runtimeConfigReads = 0;
+  const harness = loadBridge({
+    initialStorage: {
+      my_day_session_token: 'signed-in-test-token',
+      my_day_selected_team_id: 'team-a',
+    },
+    invoke: async (command, args) => {
+      invokeCalls.push([command, args]);
+      if (command === 'get_or_create_installation_id') return 'desktop-installation-a';
+      if (command === 'get_sync_status') return { configured: false, paused: true };
+      return null;
+    },
+    fetch: async (url, options = {}) => {
+      fetchCalls.push([url, options]);
+      if (url.includes('/me/ai/runtime-config')) {
+        runtimeConfigReads += 1;
+        if (runtimeConfigReads === 1) {
+          return response({
+            detail: {
+              code: 'runtime_device_not_authorized',
+              message: 'This desktop installation is not active for the signed-in user.',
+            },
+          }, 403);
+        }
+        return aiRuntimeFetch(url);
+      }
+      if (url.endsWith('/me/teams')) {
+        return response({
+          employee_id: 'employee-a',
+          items: [{ team_id: 'team-a', name: 'Team A' }],
+        });
+      }
+      if (url.endsWith('/devices/auto-enroll')) {
+        return response({
+          device: { device_id: 'device-a', employee_id: 'employee-a', team_id: 'team-a' },
+          credentials: { device_token: 'device-token-a', hmac_secret: 'hmac-a' },
+        }, 201);
+      }
+      return aiRuntimeFetch(url);
+    },
+  });
+
+  await harness.agentDesktop.openWorkbench();
+
+  assert.equal(runtimeConfigReads, 2);
+  const enrollment = fetchCalls.find(([url]) => url.endsWith('/devices/auto-enroll'));
+  assert.ok(enrollment);
+  assert.equal(enrollment[1].headers.get('X-Team-ID'), 'team-a');
+  assert.deepEqual(JSON.parse(enrollment[1].body), {
+    installation_id: 'desktop-installation-a',
+    device_name: 'Claritide Windows',
+    platform: 'Windows',
+  });
+  const commands = invokeCalls.map(([command]) => command);
+  assert.ok(commands.indexOf('configure_sync') < commands.indexOf('open_agent_workbench'));
+  const configure = invokeCalls.find(([command]) => command === 'configure_sync');
+  assert.equal(configure[1].config.device_id, 'device-a');
+  assert.equal(configure[1].config.device_key, 'device-token-a');
+  assert.equal(
+    invokeCalls.find(([command]) => command === 'open_agent_workbench')[1].runtime.token,
+    'art_bridge_test_token',
+  );
+});
+
 test('installer language is applied once without overriding later manual changes', () => {
   let clicks = 0;
   const languageButton = { click() { clicks += 1; } };
