@@ -13,14 +13,27 @@ const source = fs.readFileSync(bridgePath, 'utf8');
 function loadEntry(documentLanguage) {
   const calls = [];
   let button = null;
+  let transition = null;
   const nav = {
     appendChild(element) { button = element; },
   };
   const document = {
-    documentElement: { lang: documentLanguage },
+    documentElement: {
+      lang: documentLanguage,
+      appendChild(element) {
+        transition = element;
+        element.parentNode = {
+          removeChild() { transition = null; },
+        };
+      },
+    },
     title: '',
     querySelector(selector) { return selector === '.global-nav' ? nav : null; },
-    getElementById(id) { return id === 'navAgentWorkbench' ? button : null; },
+    getElementById(id) {
+      if (id === 'navAgentWorkbench') return button;
+      if (id === 'claritideAgentTransition') return transition;
+      return null;
+    },
     createElement() {
       const listeners = new Map();
       return {
@@ -68,7 +81,7 @@ function loadEntry(documentLanguage) {
     console,
   }, { filename: bridgePath });
   window.__SEESEEYOU_BRIDGE_TEST__.ensureAgentWorkbenchEntry();
-  return { button, calls };
+  return { button, calls, getTransition: () => transition };
 }
 
 test('visible AI Workbench entry invokes the native opener with the active locale', async () => {
@@ -84,6 +97,10 @@ test('visible AI Workbench entry invokes the native opener with the active local
     await Promise.resolve();
 
     assert.equal(harness.button.textContent, expectedLabel);
+    assert.equal(
+      harness.getTransition().textContent,
+      expectedLocale === 'en' ? 'Opening AI Workbench…' : '正在打开 AI 工作台…',
+    );
     assert.equal(harness.calls.length, 1);
     assert.equal(harness.calls[0][0], 'open_agent_workbench');
     assert.equal(harness.calls[0][1].locale, expectedLocale);
