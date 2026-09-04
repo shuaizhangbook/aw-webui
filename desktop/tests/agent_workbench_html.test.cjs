@@ -35,6 +35,7 @@ test('approved project and session hierarchy is present', () => {
 
 test('same-window navigation and return are explicit', () => {
   assert.match(html, /返回工作空间/);
+  assert.match(html, /var WORKSPACE_URL='https:\/\/watch\.sding\.me\/admin\/my-day\/\?desktop=1';/);
   assert.match(html, /window\.location\.assign\(WORKSPACE_URL\)/);
   assert.match(html, /await bridge\.close/);
   assert.doesNotMatch(html, /window\.open\(/);
