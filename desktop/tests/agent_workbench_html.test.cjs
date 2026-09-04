@@ -96,8 +96,23 @@ test('same-window navigation and return are explicit', () => {
   assert.match(html, /返回/);
   assert.match(html, /var WORKSPACE_URL = 'https:\/\/watch\.sding\.me\/admin\/my-day\/\?desktop=1';/);
   assert.match(html, /window\.location\.assign\(WORKSPACE_URL\)/);
-  assert.match(html, /await closeNativeSession\(\)/);
+  assert.match(html, /await closeNativeSession\(true\)/);
+  assert.match(html, /clearOnline: clearOnline === true/);
   assert.doesNotMatch(html, /window\.open\(/);
+});
+
+test('bundled runtime uses only the authorized online gateway and in-memory token', () => {
+  const runtimePath = process.env.CLARITIDE_AGENT_RUNTIME_PATH;
+  if (!runtimePath) return;
+  const runtime = fs.readFileSync(runtimePath, 'utf8');
+  assert.match(runtime, /ONLINE_GATEWAY_URL: &str = "https:\/\/watch\.sding\.me\/api\/v1\/agent-ai\/openai\/v1"/);
+  assert.match(runtime, /source == RuntimeSource::Bundled && online\.is_none\(\)/);
+  assert.match(runtime, /\.env\("CLAUDE_CODE_USE_OPENAI", "1"\)/);
+  assert.match(runtime, /\.env\("OPENAI_BASE_URL", &online\.gateway_url\)/);
+  assert.match(runtime, /\.env\("OPENAI_API_KEY", &online\.token\)/);
+  assert.match(runtime, /\.env\("OPENAI_MODEL", &model\)/);
+  assert.match(runtime, /online_runtime: Option<OnlineRuntimeConfig>/);
+  assert.doesNotMatch(runtime, /write\([^\n]*online\.token|serialize[^\n]*online_runtime/i);
 });
 
 test('runtime and user-controlled values render as text, never trusted HTML', () => {
