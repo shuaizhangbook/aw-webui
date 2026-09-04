@@ -1,8 +1,8 @@
 diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
-index 702a937..90b0f9c 100644
+index 8a0fde0..4bec132 100644
 --- a/src-tauri/assets/agent-workbench.html
 +++ b/src-tauri/assets/agent-workbench.html
-@@ -6,155 +6,1718 @@
+@@ -6,155 +6,1723 @@
    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://ipc.localhost;">
    <title>Claritide · AI 工作台</title>
    <style>
@@ -480,7 +480,7 @@ index 702a937..90b0f9c 100644
 -    (function(){
 +    (function () {
        'use strict';
--      var WORKSPACE_URL='https://watch.sding.me/';
+-      var WORKSPACE_URL='https://watch.sding.me/admin/my-day/?desktop=1';
 -      var STORAGE_KEY='claritide.agent.projects.v1';
 -      var bridge=window.__CLARITIDE_CCB__;
 -      var locale=new URLSearchParams(window.location.search).get('locale')==='en'?'en':'zh-CN';
@@ -1292,13 +1292,18 @@ index 702a937..90b0f9c 100644
 +        $('#deleteActiveSession').disabled = !session;
 +      }
 +
-+      async function closeNativeSession() {
++      async function closeNativeSession(clearOnline) {
 +        var id = state.nativeSessionId;
 +        state.nativeSessionId = '';
 +        state.turnActive = false;
 +        state.starting = false;
-+        if (id && bridge) {
-+          try { await bridge.close({ sessionId: id }); } catch (_error) {}
++        if (bridge && (id || clearOnline)) {
++          try {
++            await bridge.close({
++              sessionId: id || null,
++              clearOnline: clearOnline === true
++            });
++          } catch (_error) {}
 +        }
 +      }
 +
@@ -1638,7 +1643,7 @@ index 702a937..90b0f9c 100644
 +      }
 +
 +      async function returnToWorkspace() {
-+        await closeNativeSession();
++        await closeNativeSession(true);
 +        window.location.assign(WORKSPACE_URL);
 +      }
 +
@@ -1853,10 +1858,52 @@ index 702a937..90b0f9c 100644
      })();
    </script>
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
-index 505c83f..c125d10 100644
+index 505c83f..4f68404 100644
 --- a/src-tauri/src/agent_runtime.rs
 +++ b/src-tauri/src/agent_runtime.rs
-@@ -149,6 +149,7 @@ struct SessionRecord {
+@@ -42,19 +42,32 @@ const RUNTIME_EXECUTABLE_ENV: &str = "CLARITIDE_AGENT_EXECUTABLE";
+ const RUNTIME_ENTRYPOINT_ENV: &str = "CLARITIDE_AGENT_ENTRYPOINT";
+ const RUNTIME_MODELS_ENV: &str = "CLARITIDE_AGENT_ALLOWED_MODELS";
+ const RUNTIME_TOOLS_ENV: &str = "CLARITIDE_AGENT_TOOLS_MODE";
++const ONLINE_GATEWAY_URL: &str = "https://watch.sding.me/api/v1/agent-ai/openai/v1";
++const ONLINE_TOKEN_MIN_TTL_SECONDS: u64 = 300;
++const ONLINE_TOKEN_MAX_TTL_SECONDS: u64 = 3600;
++const ONLINE_TOKEN_START_MARGIN_MS: u64 = 30_000;
+ 
+ static RUNTIME: OnceLock<AgentRuntime> = OnceLock::new();
+ static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+ static UUID_COUNTER: AtomicU64 = AtomicU64::new(1);
+ static PROCESS_GENERATION: AtomicU64 = AtomicU64::new(1);
+ 
+-#[derive(Debug, Clone)]
++#[derive(Clone)]
+ struct RuntimeConfig {
+     executable: PathBuf,
+     entrypoint: Option<PathBuf>,
+     models: Vec<String>,
+     tools_mode: ToolsMode,
+     source: RuntimeSource,
++    online: Option<OnlineRuntimeConfig>,
++}
++
++#[derive(Clone)]
++struct OnlineRuntimeConfig {
++    gateway_url: String,
++    token: String,
++    expires_at_ms: u64,
++    allowed_models: Vec<String>,
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -137,6 +150,7 @@ struct AgentRuntime {
+ struct RuntimeState {
+     workspaces: HashMap<String, PathBuf>,
+     sessions: HashMap<String, SessionRecord>,
++    online_runtime: Option<OnlineRuntimeConfig>,
+     last_error: Option<String>,
+ }
+ 
+@@ -149,6 +163,7 @@ struct SessionRecord {
      workspace_id: String,
      workspace_name: String,
      model: String,
@@ -1864,7 +1911,7 @@ index 505c83f..c125d10 100644
      permission: AgentPermissionMode,
      events: VecDeque<AgentEvent>,
      queued_event_bytes: usize,
-@@ -233,6 +234,7 @@ pub struct AgentStatus {
+@@ -233,6 +248,7 @@ pub struct AgentStatus {
  pub struct AgentCapabilities {
      workspace: bool,
      models: bool,
@@ -1872,7 +1919,7 @@ index 505c83f..c125d10 100644
      streaming: bool,
      stop: bool,
      resume: bool,
-@@ -249,6 +251,7 @@ pub struct AgentSessionSummary {
+@@ -249,6 +265,7 @@ pub struct AgentSessionSummary {
      workspace_id: String,
      workspace_name: String,
      model: String,
@@ -1880,7 +1927,7 @@ index 505c83f..c125d10 100644
      permission: String,
  }
  
-@@ -268,6 +271,8 @@ pub struct AgentStartRequest {
+@@ -268,6 +285,8 @@ pub struct AgentStartRequest {
      #[serde(default)]
      model: Option<String>,
      #[serde(default)]
@@ -1889,7 +1936,7 @@ index 505c83f..c125d10 100644
      locale: Option<String>,
      #[serde(default)]
      permission: AgentPermissionMode,
-@@ -278,6 +283,7 @@ pub struct AgentStartRequest {
+@@ -278,6 +297,7 @@ pub struct AgentStartRequest {
  pub struct AgentStartResponse {
      session_id: String,
      model: String,
@@ -1897,7 +1944,121 @@ index 505c83f..c125d10 100644
      workspace: String,
      permission: String,
  }
-@@ -351,6 +357,17 @@ fn validate_absolute_file(path: &Path, variable: &str) -> Result<PathBuf, String
+@@ -301,6 +321,26 @@ pub struct AgentSessionRequest {
+     session_id: String,
+ }
+ 
++#[derive(Deserialize)]
++#[serde(rename_all = "camelCase")]
++pub struct AgentOnlineRuntimeRequest {
++    gateway_url: String,
++    token: String,
++    expires_in: u64,
++    default_model: String,
++    allowed_models: Vec<String>,
++    session_id: String,
++}
++
++#[derive(Debug, Deserialize)]
++#[serde(rename_all = "camelCase")]
++pub struct AgentCloseRequest {
++    #[serde(default)]
++    session_id: Option<String>,
++    #[serde(default)]
++    clear_online: bool,
++}
++
+ fn runtime() -> &'static AgentRuntime {
+     RUNTIME.get_or_init(AgentRuntime::default)
+ }
+@@ -319,6 +359,86 @@ fn now_ms() -> u64 {
+         .as_millis() as u64
+ }
+ 
++fn validated_online_runtime(
++    request: AgentOnlineRuntimeRequest,
++) -> Result<OnlineRuntimeConfig, String> {
++    if request.gateway_url.trim_end_matches('/') != ONLINE_GATEWAY_URL {
++        return Err("The AI gateway address is not trusted".to_string());
++    }
++    if !request.token.starts_with("art_")
++        || request.token.len() > 512
++        || !request.token.bytes().all(|byte| byte.is_ascii_graphic())
++    {
++        return Err("The AI runtime token is invalid".to_string());
++    }
++    if !(ONLINE_TOKEN_MIN_TTL_SECONDS..=ONLINE_TOKEN_MAX_TTL_SECONDS)
++        .contains(&request.expires_in)
++    {
++        return Err("The AI runtime token lifetime is invalid".to_string());
++    }
++    if request.allowed_models.is_empty() || request.allowed_models.len() > 16 {
++        return Err("The AI model authorization must contain 1 to 16 models".to_string());
++    }
++    let mut allowed_models = Vec::new();
++    for model in request.allowed_models {
++        if !valid_model_id(&model) {
++            return Err("The AI model authorization contains an invalid model".to_string());
++        }
++        if !allowed_models.iter().any(|allowed| allowed == &model) {
++            allowed_models.push(model);
++        }
++    }
++    if !allowed_models
++        .iter()
++        .any(|allowed| allowed == &request.default_model)
++    {
++        return Err("The default AI model is not authorized".to_string());
++    }
++    if !request.session_id.starts_with("ars_")
++        || request.session_id.len() > 128
++        || !request
++            .session_id
++            .bytes()
++            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
++    {
++        return Err("The AI runtime session id is invalid".to_string());
++    }
++    Ok(OnlineRuntimeConfig {
++        gateway_url: ONLINE_GATEWAY_URL.to_string(),
++        token: request.token,
++        expires_at_ms: now_ms().saturating_add(request.expires_in.saturating_mul(1000)),
++        allowed_models,
++    })
++}
++
++pub fn configure_online_runtime(request: AgentOnlineRuntimeRequest) -> Result<(), String> {
++    let online_runtime = validated_online_runtime(request)?;
++    let mut state = lock_state()?;
++    state.online_runtime = Some(online_runtime);
++    state.last_error = None;
++    Ok(())
++}
++
++pub fn clear_online_runtime() {
++    if let Ok(mut state) = lock_state() {
++        state.online_runtime = None;
++    }
++}
++
++fn current_online_runtime() -> Result<Option<OnlineRuntimeConfig>, String> {
++    let mut state = lock_state()?;
++    if state.online_runtime.as_ref().is_some_and(|online| {
++        online.expires_at_ms <= now_ms().saturating_add(ONLINE_TOKEN_START_MARGIN_MS)
++    }) {
++        state.online_runtime = None;
++        state.last_error = Some(
++            "AI authorization expired. Return to the workspace and open AI Workbench again."
++                .to_string(),
++        );
++    }
++    Ok(state.online_runtime.clone())
++}
++
+ fn next_handle(prefix: &str) -> String {
+     let sequence = HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
+     format!("{prefix}-{:x}-{sequence:x}", now_ms())
+@@ -351,6 +471,17 @@ fn validate_absolute_file(path: &Path, variable: &str) -> Result<PathBuf, String
      Ok(resolved)
  }
  
@@ -1915,7 +2076,7 @@ index 505c83f..c125d10 100644
  fn valid_model_id(value: &str) -> bool {
      value.len() <= 128
          && value
-@@ -362,6 +379,10 @@ fn valid_model_id(value: &str) -> bool {
+@@ -362,6 +493,10 @@ fn valid_model_id(value: &str) -> bool {
              .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
  }
  
@@ -1926,7 +2087,48 @@ index 505c83f..c125d10 100644
  fn allowed_models() -> Result<Vec<String>, String> {
      let configured = env::var(RUNTIME_MODELS_ENV).unwrap_or_else(|_| "default".to_string());
      let mut models = Vec::new();
-@@ -1471,6 +1492,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+@@ -406,6 +541,7 @@ fn bundled_runtime_paths(resource_dir: &Path) -> (PathBuf, PathBuf) {
+ }
+ 
+ fn runtime_config(app: &AppHandle) -> Result<RuntimeConfig, String> {
++    let online = current_online_runtime()?;
+     let (executable, entrypoint, source) = if let Some(executable) =
+         env::var_os(RUNTIME_EXECUTABLE_ENV).filter(|value| !value.is_empty())
+     {
+@@ -430,12 +566,22 @@ fn runtime_config(app: &AppHandle) -> Result<RuntimeConfig, String> {
+         let entrypoint = validate_absolute_file(&entrypoint, "bundled CCB entrypoint")?;
+         (executable, Some(entrypoint), RuntimeSource::Bundled)
+     };
++    if source == RuntimeSource::Bundled && online.is_none() {
++        return Err(
++            "Sign in to Claritide and open AI Workbench again to authorize AI access".to_string(),
++        );
++    }
++    let models = match &online {
++        Some(online) => online.allowed_models.clone(),
++        None => allowed_models()?,
++    };
+     Ok(RuntimeConfig {
+         executable,
+         entrypoint,
+-        models: allowed_models()?,
++        models,
+         tools_mode: ToolsMode::from_env()?,
+         source,
++        online,
+     })
+ }
+ 
+@@ -1459,7 +1605,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+     let allowed_models = config
+         .as_ref()
+         .map(|config| config.models.clone())
+-        .unwrap_or_else(|_| allowed_models().unwrap_or_default());
++        .unwrap_or_default();
+     let (sessions, runtime_error) = lock_state()
+         .map(|state| {
+             let sessions = state
+@@ -1471,6 +1617,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
                      workspace_id: session.workspace_id.clone(),
                      workspace_name: session.workspace_name.clone(),
                      model: session.model.clone(),
@@ -1934,7 +2136,7 @@ index 505c83f..c125d10 100644
                      permission: session.permission.as_str().to_string(),
                  })
                  .collect();
-@@ -1490,6 +1512,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+@@ -1490,6 +1637,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
          capabilities: AgentCapabilities {
              workspace: true,
              models: true,
@@ -1942,7 +2144,7 @@ index 505c83f..c125d10 100644
              streaming: true,
              stop: true,
              resume: false,
-@@ -1504,6 +1527,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+@@ -1504,6 +1652,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
              "listModels",
              "listSessions",
              "selectWorkspace",
@@ -1950,7 +2152,7 @@ index 505c83f..c125d10 100644
              "startSession",
              "send",
              "stop",
-@@ -1546,7 +1570,9 @@ pub async fn agent_select_workspace(app: AppHandle) -> Result<Option<AgentWorksp
+@@ -1546,7 +1695,9 @@ pub async fn agent_select_workspace(app: AppHandle) -> Result<Option<AgentWorksp
      Ok(Some(AgentWorkspace {
          id,
          name,
@@ -1961,18 +2163,20 @@ index 505c83f..c125d10 100644
      }))
  }
  
-@@ -1571,6 +1597,10 @@ pub fn agent_start(
+@@ -1569,7 +1720,11 @@ pub fn agent_start(
+     let config = runtime_config(&app)?;
+     let model = request.model.unwrap_or_else(|| config.models[0].clone());
      if !config.models.iter().any(|allowed| allowed == &model) {
-         return Err("The requested model is not in the local development allowlist".to_string());
-     }
+-        return Err("The requested model is not in the local development allowlist".to_string());
++        return Err("The requested model is not authorized for this account".to_string());
++    }
 +    let effort = request.effort.unwrap_or_else(|| "high".to_string());
 +    if !valid_effort(&effort) {
 +        return Err("effort must be low, medium, high, xhigh, or max".to_string());
-+    }
+     }
  
      let config_dir = crate::dirs::get_config_dir()
-         .map_err(|_| "Unable to locate the Claritide configuration directory".to_string())?
-@@ -1614,7 +1644,10 @@ pub fn agent_start(
+@@ -1614,7 +1769,10 @@ pub fn agent_start(
  
          let mut command = Command::new(&config.executable);
          if let Some(entrypoint) = &config.entrypoint {
@@ -1984,7 +2188,7 @@ index 505c83f..c125d10 100644
          }
          command
              .args(runtime_args(
-@@ -1627,6 +1660,7 @@ pub fn agent_start(
+@@ -1627,10 +1785,28 @@ pub fn agent_start(
              .env("CLAUDE_CONFIG_DIR", &config_dir)
              .env("CLAUDE_CODE_SIMPLE", "1")
              .env("CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS", "1")
@@ -1992,7 +2196,28 @@ index 505c83f..c125d10 100644
              .env_remove("CLAUDE_CODE_RESUME_INTERRUPTED_TURN")
              .stdin(Stdio::piped())
              .stdout(Stdio::piped())
-@@ -1665,6 +1699,7 @@ pub fn agent_start(
+             .stderr(Stdio::piped());
++        for variable in [
++            "CLAUDE_CODE_USE_OPENAI",
++            "OPENAI_BASE_URL",
++            "OPENAI_API_KEY",
++            "OPENAI_MODEL",
++            "ANTHROPIC_BASE_URL",
++            "ANTHROPIC_API_KEY",
++        ] {
++            command.env_remove(variable);
++        }
++        if let Some(online) = &config.online {
++            command
++                .env("CLAUDE_CODE_USE_OPENAI", "1")
++                .env("OPENAI_BASE_URL", &online.gateway_url)
++                .env("OPENAI_API_KEY", &online.token)
++                .env("OPENAI_MODEL", &model);
++        }
+         #[cfg(target_os = "windows")]
+         command.creation_flags(0x08000000);
+ 
+@@ -1665,6 +1841,7 @@ pub fn agent_start(
                  workspace_id: request.workspace.clone(),
                  workspace_name,
                  model: model.clone(),
@@ -2000,7 +2225,7 @@ index 505c83f..c125d10 100644
                  permission: request.permission,
                  events: VecDeque::new(),
                  queued_event_bytes: 0,
-@@ -1699,6 +1734,7 @@ pub fn agent_start(
+@@ -1699,6 +1876,7 @@ pub fn agent_start(
      Ok(AgentStartResponse {
          session_id: request.client_session_id,
          model,
@@ -2008,18 +2233,61 @@ index 505c83f..c125d10 100644
          workspace: request.workspace,
          permission: request.permission.as_str().to_string(),
      })
-@@ -1907,8 +1943,8 @@ mod tests {
+@@ -1765,12 +1943,22 @@ pub fn agent_interrupt(request: AgentSessionRequest) -> Result<(), String> {
+ }
+ 
+ #[tauri::command]
+-pub fn agent_close(request: AgentSessionRequest) -> Result<(), String> {
++pub fn agent_close(request: AgentCloseRequest) -> Result<(), String> {
+     let (session_id, generation, child, end_session_queued) = {
+         let mut state = lock_state()?;
++        if request.clear_online {
++            state.online_runtime = None;
++        }
++        let Some(session_id) = request.session_id else {
++            return if request.clear_online {
++                Ok(())
++            } else {
++                Err("sessionId is required".to_string())
++            };
++        };
+         let session = state
+             .sessions
+-            .get_mut(&request.session_id)
++            .get_mut(&session_id)
+             .ok_or_else(|| "Unknown agent session".to_string())?;
+         if matches!(
+             session.phase,
+@@ -1795,7 +1983,7 @@ pub fn agent_close(request: AgentSessionRequest) -> Result<(), String> {
+         // and then closes stdin. If the queue is unavailable, kill immediately.
+         session.writer.take();
+         (
+-            request.session_id,
++            session_id,
+             session.generation,
+             session.child.clone(),
+             end_session_queued,
+@@ -1880,6 +2068,7 @@ pub fn agent_poll_events(session_id: Option<String>) -> Result<Vec<AgentEvent>,
+ pub fn close_all() {
+     let children = lock_state()
+         .map(|mut state| {
++            state.online_runtime = None;
+             state
+                 .sessions
+                 .values_mut()
+@@ -1907,8 +2096,9 @@ mod tests {
      use super::{
          advance_seq, bundled_runtime_paths, mismatched_session_id, new_uuid_v4,
          normalize_ndjson_line, read_bounded_lines, remember_protocol_id, result_fallback_text,
 -        runtime_args, user_message, valid_model_id, valid_session_id, AgentPermissionMode,
 -        BoundedLine, ToolsMode,
 +        runtime_args, user_message, valid_effort, valid_model_id, valid_session_id,
-+        windows_compatible_path, AgentPermissionMode, BoundedLine, ToolsMode,
++        validated_online_runtime, windows_compatible_path, AgentOnlineRuntimeRequest,
++        AgentPermissionMode, BoundedLine, ToolsMode,
      };
      use std::collections::{HashSet, VecDeque};
      use std::path::Path;
-@@ -1920,6 +1956,11 @@ mod tests {
+@@ -1920,6 +2110,43 @@ mod tests {
          assert!(valid_model_id("openai/gpt-5.6-sol"));
          assert!(!valid_model_id("model --tools Bash"));
          assert!(!valid_model_id("--dangerously-skip-permissions"));
@@ -2028,10 +2296,42 @@ index 505c83f..c125d10 100644
 +        assert!(valid_effort("max"));
 +        assert!(!valid_effort("ultracode"));
 +        assert!(!valid_effort("high --tools Bash"));
++    }
++
++    fn online_request() -> AgentOnlineRuntimeRequest {
++        AgentOnlineRuntimeRequest {
++            gateway_url: "https://watch.sding.me/api/v1/agent-ai/openai/v1".to_string(),
++            token: "art_ephemeral_test_token".to_string(),
++            expires_in: 900,
++            default_model: "gpt-5.6-sol".to_string(),
++            allowed_models: vec!["gpt-5.6-sol".to_string(), "gpt-5.6-terra".to_string()],
++            session_id: "ars_test_session".to_string(),
++        }
++    }
++
++    #[test]
++    fn validates_online_gateway_token_ttl_and_model_authorization() {
++        assert!(validated_online_runtime(online_request()).is_ok());
++
++        let mut untrusted = online_request();
++        untrusted.gateway_url = "https://gateway.example/v1".to_string();
++        assert!(validated_online_runtime(untrusted).is_err());
++
++        let mut invalid_token = online_request();
++        invalid_token.token = "persistent-account-token".to_string();
++        assert!(validated_online_runtime(invalid_token).is_err());
++
++        let mut invalid_ttl = online_request();
++        invalid_ttl.expires_in = 86_400;
++        assert!(validated_online_runtime(invalid_ttl).is_err());
++
++        let mut unauthorized_default = online_request();
++        unauthorized_default.default_model = "gpt-5.5".to_string();
++        assert!(validated_online_runtime(unauthorized_default).is_err());
      }
  
      #[test]
-@@ -2006,6 +2047,18 @@ mod tests {
+@@ -2006,6 +2233,18 @@ mod tests {
          );
      }
  
@@ -2051,71 +2351,48 @@ index 505c83f..c125d10 100644
      fn controlled_args_force_structured_permissions_without_bypass() {
          let args = runtime_args(
 diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
-index 38dc896..d89a8f0 100644
+index d89a8f0..94d5a78 100644
 --- a/src-tauri/src/agent_workbench.rs
 +++ b/src-tauri/src/agent_workbench.rs
-@@ -28,16 +28,22 @@ fn normalized_locale(locale: Option<&str>) -> &'static str {
-     }
+@@ -1,6 +1,8 @@
+ use log::{info, warn};
+ use tauri::{AppHandle, Manager, Url};
+ 
++use crate::agent_runtime::{self, AgentOnlineRuntimeRequest};
++
+ pub const WINDOW_LABEL: &str = "main";
+ pub const URI_SCHEME: &str = "claritide-agent";
+ pub const HTML: &str = include_str!("../assets/agent-workbench.html");
+@@ -101,8 +103,14 @@ mod tests {
  }
  
-+fn workbench_url(locale: Option<&str>, use_windows_protocol_mapping: bool) -> Result<Url, String> {
-+    let origin = if use_windows_protocol_mapping {
-+        "http://claritide-agent.localhost"
-+    } else {
-+        "claritide-agent://localhost"
-+    };
-+    format!("{origin}/?locale={}", normalized_locale(locale))
-+        .parse()
-+        .map_err(|error| format!("Unable to build local agent URL: {error}"))
-+}
-+
- pub fn open(app: &AppHandle, locale: Option<&str>) -> Result<(), String> {
-     let window = app
-         .get_webview_window(WINDOW_LABEL)
-         .ok_or_else(|| "Claritide main window is unavailable".to_string())?;
--    let url = format!(
--        "{URI_SCHEME}://localhost/?locale={}",
--        normalized_locale(locale)
--    )
--    .parse()
--    .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
-+    let url = workbench_url(locale, cfg!(target_os = "windows"))?;
-     window
-         .navigate(url)
-         .map_err(|error| format!("Unable to open Claritide AI Workbench: {error}"))?;
-@@ -49,7 +55,7 @@ pub fn open(app: &AppHandle, locale: Option<&str>) -> Result<(), String> {
- 
- #[cfg(test)]
- mod tests {
--    use super::{main_navigation_allowed, normalized_locale};
-+    use super::{main_navigation_allowed, normalized_locale, workbench_url};
- 
-     #[test]
-     fn workbench_locale_is_strictly_normalized() {
-@@ -59,6 +65,18 @@ mod tests {
-         assert_eq!(normalized_locale(None), "zh-CN");
-     }
- 
-+    #[test]
-+    fn workbench_url_uses_the_windows_custom_protocol_mapping() {
-+        assert_eq!(
-+            workbench_url(Some("en"), true).unwrap().as_str(),
-+            "http://claritide-agent.localhost/?locale=en"
-+        );
-+        assert_eq!(
-+            workbench_url(Some("zh-CN"), false).unwrap().as_str(),
-+            "claritide-agent://localhost/?locale=zh-CN"
-+        );
-+    }
-+
-     #[test]
-     fn main_window_navigation_allows_only_claritide_surfaces() {
-         assert!(main_navigation_allowed(
+ #[tauri::command]
+-pub async fn open_agent_workbench(app: AppHandle, locale: Option<String>) -> Result<(), String> {
++pub async fn open_agent_workbench(
++    app: AppHandle,
++    locale: Option<String>,
++    runtime: AgentOnlineRuntimeRequest,
++) -> Result<(), String> {
++    agent_runtime::configure_online_runtime(runtime)?;
+     open(&app, locale.as_deref()).map_err(|error| {
++        agent_runtime::clear_online_runtime();
+         warn!("{error}");
+         error
+     })
 diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
-index 0ef2fe5..6a1a82c 100644
+index 510a0ed..480974c 100644
 --- a/src-tauri/src/seeseeyou_bridge.js
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -103,6 +103,30 @@
+@@ -40,7 +40,7 @@
+     value: Object.freeze({
+       capabilityVersion: 1,
+       openWorkbench: function () {
+-        return invoke('open_agent_workbench', { locale: isEnglish() ? 'en' : 'zh-CN' });
++        return openAgentWorkbench();
+       }
+     }),
+     configurable: false,
+@@ -103,6 +103,105 @@
      return true;
    }
  
@@ -2143,17 +2420,98 @@ index 0ef2fe5..6a1a82c 100644
 +    };
 +  }
 +
++  function agentRuntimeErrorMessage(error) {
++    var status = Number(error && error.status || 0);
++    var code = String(error && error.code || '');
++    if (status === 401) {
++      return copy('登录状态已失效，请重新登录后再试。', 'Your sign-in expired. Please sign in again.');
++    }
++    if (status === 403 || code === 'runtime_device_not_authorized') {
++      return copy(
++        '当前账号、团队或设备尚未获得 AI 使用权限，请联系团队管理员。',
++        'This account, team, or device is not authorized to use AI. Contact your team administrator.'
++      );
++    }
++    if (status === 429) {
++      return copy('AI 使用额度暂时不可用，请稍后再试。', 'AI usage is temporarily unavailable. Please try again later.');
++    }
++    if (status === 503) {
++      return copy('AI 服务暂时不可用，请稍后再试。', 'The AI service is temporarily unavailable. Please try again later.');
++    }
++    return copy('无法打开 AI 工作台：', 'Unable to open AI Workbench: ') +
++      String(error && error.message ? error.message : error);
++  }
++
++  async function revokeRuntimeToken(token) {
++    if (!token) return;
++    try {
++      await apiRequest('/me/ai/runtime-token/revoke', {
++        method: 'POST',
++        headers: { 'X-Agent-Runtime-Token': token }
++      });
++    } catch (_error) {}
++  }
++
++  async function openAgentWorkbench() {
++    var token = sessionToken();
++    if (!token) {
++      throw Object.assign(new Error('Sign-in required'), { status: 401 });
++    }
++    var installation = await installationId();
++    var query = '?installation_id=' + encodeURIComponent(String(installation || ''));
++    var config = await apiRequest('/me/ai/runtime-config' + query);
++    if (!config || config.enabled !== true) {
++      throw Object.assign(new Error('AI runtime is not enabled'), {
++        status: 403,
++        code: 'runtime_device_not_authorized'
++      });
++    }
++    var issued = await apiRequest('/me/ai/runtime-token', {
++      method: 'POST',
++      body: JSON.stringify({
++        installation_id: String(installation || ''),
++        model: String(config.default_model || ''),
++        client_version: DESKTOP_VERSION
++      })
++    });
++    var runtimeToken = String(issued && issued.token || '');
++    try {
++      return await invoke('open_agent_workbench', {
++        locale: isEnglish() ? 'en' : 'zh-CN',
++        runtime: {
++          gatewayUrl: String(config.gateway_url || ''),
++          token: runtimeToken,
++          expiresIn: Number(issued && issued.expires_in || 0),
++          defaultModel: String(issued && issued.default_model || config.default_model || ''),
++          allowedModels: Array.isArray(issued && issued.allowed_models)
++            ? issued.allowed_models.map(String)
++            : [],
++          sessionId: String(issued && issued.session_id || '')
++        }
++      });
++    } catch (error) {
++      await revokeRuntimeToken(runtimeToken);
++      throw error;
++    }
++  }
++
    function ensureAgentWorkbenchEntry() {
      var nav = document.querySelector('.global-nav');
      if (!nav) return null;
-@@ -114,7 +138,9 @@
+@@ -114,9 +213,13 @@
        button.addEventListener('click', function (event) {
          event.preventDefault();
          event.stopPropagation();
--        invoke('open_agent_workbench').catch(function (error) {
+-        invoke('open_agent_workbench', { locale: isEnglish() ? 'en' : 'zh-CN' }).catch(function (error) {
+-          showDesktopError(copy('无法打开 AI 工作台：', 'Unable to open AI Workbench: ') +
+-            String(error && error.message ? error.message : error));
++        if (button.disabled) return;
++        button.disabled = true;
 +        var clearTransition = showAgentWorkbenchTransition();
-+        invoke('open_agent_workbench', { locale: isEnglish() ? 'en' : 'zh-CN' }).catch(function (error) {
++        openAgentWorkbench().catch(function (error) {
 +          clearTransition();
-           showDesktopError(copy('无法打开 AI 工作台：', 'Unable to open AI Workbench: ') +
-             String(error && error.message ? error.message : error));
++          button.disabled = false;
++          showDesktopError(agentRuntimeErrorMessage(error));
          });
+       });
+       nav.appendChild(button);
