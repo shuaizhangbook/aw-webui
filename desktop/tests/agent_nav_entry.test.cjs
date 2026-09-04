@@ -12,6 +12,7 @@ const source = fs.readFileSync(bridgePath, 'utf8');
 
 function loadEntry(documentLanguage) {
   const calls = [];
+  const fetchCalls = [];
   let button = null;
   let transition = null;
   const nav = {
@@ -50,6 +51,9 @@ function loadEntry(documentLanguage) {
     __TAURI_INTERNALS__: {
       invoke(command, args) {
         calls.push([command, args]);
+        if (command === 'get_or_create_installation_id') {
+          return Promise.resolve('install-test-123');
+        }
         return Promise.resolve();
       },
     },
@@ -58,12 +62,39 @@ function loadEntry(documentLanguage) {
       href: 'https://watch.sding.me/admin/my-day/?desktop=1',
     },
     localStorage: {
-      getItem() { return null; },
+      getItem(key) { return key === 'usage_admin_token' ? 'session-test-token' : null; },
       setItem() {},
       removeItem() {},
     },
     navigator: { platform: 'Win32' },
-    fetch: async () => ({ ok: true, async json() { return {}; } }),
+    fetch: async (url, options) => {
+      fetchCalls.push([url, options]);
+      if (String(url).includes('/me/ai/runtime-config')) {
+        return {
+          ok: true,
+          async json() {
+            return {
+              enabled: true,
+              gateway_url: 'https://watch.sding.me/api/v1/agent-ai/openai/v1',
+              default_model: 'gpt-5.6-sol',
+              allowed_models: ['gpt-5.6-sol'],
+            };
+          },
+        };
+      }
+      return {
+        ok: true,
+        async json() {
+          return {
+            token: 'art_test_runtime_token',
+            expires_in: 900,
+            default_model: 'gpt-5.6-sol',
+            allowed_models: ['gpt-5.6-sol'],
+            session_id: 'ars_test_session',
+          };
+        },
+      };
+    },
     confirm() { return true; },
     alert() {},
     addEventListener() {},
@@ -81,7 +112,7 @@ function loadEntry(documentLanguage) {
     console,
   }, { filename: bridgePath });
   window.__SEESEEYOU_BRIDGE_TEST__.ensureAgentWorkbenchEntry();
-  return { button, calls, getTransition: () => transition };
+  return { button, calls, fetchCalls, getTransition: () => transition };
 }
 
 test('visible AI Workbench entry invokes the native opener with the active locale', async () => {
@@ -94,17 +125,43 @@ test('visible AI Workbench entry invokes the native opener with the active local
       preventDefault() {},
       stopPropagation() {},
     });
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(harness.button.textContent, expectedLabel);
     assert.equal(
       harness.getTransition().textContent,
       expectedLocale === 'en' ? 'Opening AI Workbench…' : '正在打开 AI 工作台…',
     );
-    assert.equal(harness.calls.length, 1);
-    assert.equal(harness.calls[0][0], 'open_agent_workbench');
-    assert.equal(harness.calls[0][1].locale, expectedLocale);
+    assert.deepEqual(harness.calls.map(call => call[0]), [
+      'get_or_create_installation_id',
+      'open_agent_workbench',
+    ]);
+    assert.equal(harness.calls[1][1].locale, expectedLocale);
+    assert.deepEqual(
+      JSON.parse(harness.fetchCalls[1][1].body),
+      {
+        installation_id: 'install-test-123',
+        model: 'gpt-5.6-sol',
+        client_version: '0.2.1',
+      },
+    );
+    assert.deepEqual(JSON.parse(JSON.stringify(harness.calls[1][1].runtime)), {
+      gatewayUrl: 'https://watch.sding.me/api/v1/agent-ai/openai/v1',
+      token: 'art_test_runtime_token',
+      expiresIn: 900,
+      defaultModel: 'gpt-5.6-sol',
+      allowedModels: ['gpt-5.6-sol'],
+      sessionId: 'ars_test_session',
+    });
   }
+});
+
+test('AI authorization stays ephemeral and is never persisted by the remote bridge', () => {
+  assert.match(source, /\/me\/ai\/runtime-config/);
+  assert.match(source, /\/me\/ai\/runtime-token/);
+  assert.match(source, /runtime:\s*\{[\s\S]*gatewayUrl:[\s\S]*expiresIn:/);
+  assert.doesNotMatch(source, /localStorage\.setItem\([^\n]*(runtime|OPENAI|art_)/i);
+  assert.doesNotMatch(source, /console\.(?:log|info|warn|error)\([^\n]*(runtimeToken|issued\.token)/);
 });
 
 test('AI Workbench entry survives initial render and language changes', () => {
