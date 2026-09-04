@@ -1,14 +1,18 @@
 diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
-index feec3fa..4526f2b 100644
+index feec3fa..38dc896 100644
 --- a/src-tauri/src/agent_workbench.rs
 +++ b/src-tauri/src/agent_workbench.rs
-@@ -17,11 +17,18 @@ pub(crate) fn main_navigation_allowed(url: &Url) -> bool {
+@@ -17,13 +17,27 @@ pub(crate) fn main_navigation_allowed(url: &Url) -> bool {
      )
  }
  
 -pub fn open(app: &AppHandle) -> Result<(), String> {
 +fn normalized_locale(locale: Option<&str>) -> &'static str {
-+    match locale.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
++    match locale
++        .map(str::trim)
++        .map(str::to_ascii_lowercase)
++        .as_deref()
++    {
 +        Some("en") | Some("en-us") | Some("english") => "en",
 +        _ => "zh-CN",
 +    }
@@ -19,11 +23,18 @@ index feec3fa..4526f2b 100644
          .get_webview_window(WINDOW_LABEL)
          .ok_or_else(|| "Claritide main window is unavailable".to_string())?;
 -    let url = format!("{URI_SCHEME}://localhost/")
-+    let url = format!("{URI_SCHEME}://localhost/?locale={}", normalized_locale(locale))
-         .parse()
-         .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
+-        .parse()
+-        .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
++    let url = format!(
++        "{URI_SCHEME}://localhost/?locale={}",
++        normalized_locale(locale)
++    )
++    .parse()
++    .map_err(|error| format!("Unable to build local agent URL: {error}"))?;
      window
-@@ -35,7 +42,15 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
+         .navigate(url)
+         .map_err(|error| format!("Unable to open Claritide AI Workbench: {error}"))?;
+@@ -35,7 +49,15 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
  
  #[cfg(test)]
  mod tests {
@@ -40,7 +51,7 @@ index feec3fa..4526f2b 100644
  
      #[test]
      fn main_window_navigation_allows_only_claritide_surfaces() {
-@@ -61,8 +76,8 @@ mod tests {
+@@ -61,8 +83,8 @@ mod tests {
  }
  
  #[tauri::command]
@@ -52,7 +63,7 @@ index feec3fa..4526f2b 100644
          error
      })
 diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
-index 648836d..cb80e86 100644
+index 648836d..f1b4dc0 100644
 --- a/src-tauri/src/lib.rs
 +++ b/src-tauri/src/lib.rs
 @@ -113,6 +113,28 @@ static SYNC_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -96,16 +107,18 @@ index 648836d..cb80e86 100644
  mod tests {
      use super::{
          bucket_metadata_ready, build_dashboard_url, fresh_sync_cursor_timestamp,
-+        installer_locale_from_executable,
-         migrate_sync_config_local_api_url, queue_sync_trigger, validate_sync_config,
-         wait_for_local_server, DesktopSyncConfig, DEFAULT_LOCAL_API_URL, SEESEEYOU_WORKSPACE_URL,
+-        migrate_sync_config_local_api_url, queue_sync_trigger, validate_sync_config,
+-        wait_for_local_server, DesktopSyncConfig, DEFAULT_LOCAL_API_URL, SEESEEYOU_WORKSPACE_URL,
++        installer_locale_from_executable, migrate_sync_config_local_api_url, queue_sync_trigger,
++        validate_sync_config, wait_for_local_server, DesktopSyncConfig, DEFAULT_LOCAL_API_URL,
++        SEESEEYOU_WORKSPACE_URL,
      };
      use std::net::TcpListener;
 +    use std::path::Path;
      use std::sync::mpsc;
  
      #[test]
-@@ -1988,6 +2013,29 @@ mod tests {
+@@ -1988,6 +2013,35 @@ mod tests {
          );
      }
  
@@ -120,14 +133,20 @@ index 648836d..cb80e86 100644
 +        let language_file = root.join("claritide-installer-language.txt");
 +
 +        std::fs::write(&language_file, "english\n").unwrap();
-+        assert_eq!(installer_locale_from_executable(Path::new(&executable)), Some("en"));
++        assert_eq!(
++            installer_locale_from_executable(Path::new(&executable)),
++            Some("en")
++        );
 +        std::fs::write(&language_file, "zh-CN\n").unwrap();
 +        assert_eq!(
 +            installer_locale_from_executable(Path::new(&executable)),
 +            Some("zh-CN")
 +        );
 +        std::fs::write(&language_file, "../../unsupported\n").unwrap();
-+        assert_eq!(installer_locale_from_executable(Path::new(&executable)), None);
++        assert_eq!(
++            installer_locale_from_executable(Path::new(&executable)),
++            None
++        );
 +
 +        std::fs::remove_dir_all(root).unwrap();
 +    }
