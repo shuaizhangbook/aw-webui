@@ -2,6 +2,7 @@ name: Agent runtime POC
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [master]
     paths:
       - '.github/workflows/agent-runtime-ci.yml'
@@ -36,6 +37,7 @@ concurrency:
 
 jobs:
   test-packaged-ccb:
+    if: ${{ !github.event.pull_request.draft }}
     name: Build and stage pinned CCB
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -83,6 +85,7 @@ jobs:
           test -f "$RUNNER_TEMP/src-tauri/agent-runtime/ccb/dist/cli-node.js"
 
   test-agent-runtime:
+    if: ${{ !github.event.pull_request.draft }}
     name: Patch, bridge, Rust, and ACL tests
     runs-on: ubuntu-22.04
     timeout-minutes: 60
