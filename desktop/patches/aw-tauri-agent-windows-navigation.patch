@@ -1,8 +1,8 @@
 diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
-index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b4c505bf6 100644
+index 702a937..2c0cff4 100644
 --- a/src-tauri/assets/agent-workbench.html
 +++ b/src-tauri/assets/agent-workbench.html
-@@ -6,155 +6,1723 @@
+@@ -6,155 +6,1916 @@
    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://ipc.localhost;">
    <title>Claritide · AI 工作台</title>
    <style>
@@ -72,6 +72,10 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +    .text-button {
 +      min-height: 32px;
 +      padding: 0 10px;
++      display: inline-flex;
++      align-items: center;
++      justify-content: center;
++      gap: 6px;
 +      border: 0;
 +      border-radius: 8px;
 +      background: transparent;
@@ -101,6 +105,8 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +      min-width: 28px;
 +      height: 28px;
 +      padding: 0 7px;
++      display: inline-grid;
++      place-items: center;
 +      border: 0;
 +      border-radius: 7px;
 +      background: transparent;
@@ -282,9 +288,144 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +      .project-button { max-width: 125px; }
 +      .composer-button { padding: 0 8px; }
 +    }
++
++    /* Keep the CCB runtime powerful while making the everyday surface feel as
++       direct and quiet as a dedicated AI tool. */
++    :root {
++      --ink: #20211f;
++      --muted: #676963;
++      --dim: #9b9d97;
++      --line: #e9e9e5;
++      --line-strong: #d9dad5;
++      --sidebar: #f4f4f1;
++      --soft: #f5f5f2;
++      --active: #e8e8e4;
++      --mint: #20211f;
++      --mint-dark: #20211f;
++      --mint-soft: #eeeeea;
++      --shadow: 0 14px 42px rgba(24, 25, 23, .12);
++    }
++    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
++      outline-color: rgba(32, 33, 31, .18);
++    }
++    .app { grid-template-columns: 234px minmax(0, 1fr); }
++    .sidebar { background: var(--sidebar); }
++    .sidebar-head { height: 52px; padding: 0 12px 0 15px; }
++    .brand-mark { display: none; }
++    .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
++    .text-button { min-height: 30px; padding: 0 8px; }
++    .new-chat {
++      height: 40px;
++      margin: 1px 7px 15px;
++      padding: 0 10px;
++      border-radius: 7px;
++      font-weight: 600;
++      justify-content: flex-start;
++      gap: 8px;
++    }
++    .new-chat .shortcut { margin-left: auto; opacity: .72; }
++    .sidebar-scroll { padding: 0 6px 18px; }
++    .section-head { height: 31px; padding: 0 9px; font-size: 10px; font-weight: 600; }
++    .compact-action { min-width: 27px; height: 27px; font-size: 11px; }
++    .project { margin-bottom: 2px; }
++    .item-shell { border-radius: 6px; }
++    .project-row { height: 32px; padding: 0 9px; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; }
++    .project-row .icon { width: 14px; height: 14px; color: #767871; }
++    .session-row { min-height: 29px; padding: 4px 7px 4px 23px; font-size: 12px; }
++    .session-shell.active { background: #e2e2de; }
++    .sidebar-foot { min-height: 43px; padding: 7px 14px; border-top-color: transparent; }
++    .status-dot { width: 7px; height: 7px; }
++    .status-dot.ready { background: #3f9b65; }
++
++    .main { grid-template-rows: 44px minmax(0, 1fr); }
++    .main-head { padding: 0 16px; border-bottom-color: transparent; }
++    .conversation-title { font-size: 13px; font-weight: 650; }
++    .conversation-path { display: none; }
++    .header-menu summary { min-width: 32px; height: 30px; }
++    .conversation { padding: 38px 0 170px; }
++    .conversation-inner { width: min(640px, calc(100% - 48px)); }
++    .welcome { min-height: 300px; }
++    .welcome h1 { font-size: 22px; letter-spacing: -.02em; }
++    .welcome p { max-width: 460px; font-size: 13px; }
++    .message { padding: 12px 0; }
++    .user-bubble {
++      max-width: min(560px, 82%);
++      padding: 9px 13px;
++      border-radius: 15px;
++      background: #f3f3f0;
++    }
++    .message.agent { display: block; }
++    .agent-mark, .message.agent .message-head { display: none; }
++    .message-body { color: #292a27; line-height: 1.62; }
++    .run-indicator { margin: 9px 0 13px; }
++    .pulse { width: 7px; height: 7px; background: #696b65; box-shadow: 0 0 0 4px #efefeb; }
++    .result-card, .error-card, .approval-card {
++      margin: 11px 0 15px;
++      padding: 12px 13px;
++      border-radius: 10px;
++    }
++    .result-card {
++      width: fit-content;
++      display: flex;
++      align-items: center;
++      gap: 9px;
++      padding: 0;
++      border: 0;
++      background: transparent;
++    }
++    .result-card .card-title { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; }
++    .result-card .card-copy { margin: 0; color: var(--muted); font-size: 11px; }
++    .result-card .card-actions { margin: 0; }
++    .result-card .card-button {
++      min-height: auto;
++      padding: 0;
++      border: 0;
++      background: transparent;
++      color: var(--muted);
++      text-decoration: underline;
++      text-underline-offset: 3px;
++    }
++
++    .composer-wrap { padding: 14px 24px 8px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28px); }
++    .composer {
++      width: min(640px, calc(100% - 8px));
++      border-color: #dedfda;
++      border-radius: 18px;
++      box-shadow: 0 5px 18px rgba(29, 30, 28, .08);
++    }
++    .composer:focus-within { border-color: #cfd0cb; box-shadow: 0 8px 24px rgba(29, 30, 28, .1); }
++    .composer textarea { min-height: 88px; padding: 15px 15px 5px; }
++    .composer-row { min-height: 44px; padding: 4px 7px 7px; }
++    .composer-button { height: 31px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; color: #666862; }
++    .project-control { display: none; }
++    .model-effort-button { max-width: 210px; background: transparent; color: #31322f; }
++    .model-effort-button:hover, .model-effort-button[aria-expanded="true"] { background: var(--soft); }
++    .voice-button.listening { background: #ecece8; color: #20211f; }
++    .send-button { width: 32px; min-width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; background: #1f201e; }
++    .icon { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
++    .send-button .icon { width: 16px; height: 16px; }
++    .send-button .stop-icon { display: none; }
++    .send-button.stop-state .send-icon { display: none; }
++    .send-button.stop-state .stop-icon { display: block; }
++    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
++    .control-popover { border-radius: 12px; }
++    .popover-option { border-radius: 8px; }
++    .option-title .check, .effort-value { color: #20211f; }
++    .effort-field input[type="range"] { accent-color: #20211f; }
++
++    .activity { top: 44px; width: 340px; }
++    .modal { border-radius: 13px; }
++    .btn.primary { border-color: #20211f; background: #20211f; }
++
++    @media (max-width: 1050px) {
++      .app { grid-template-columns: 218px minmax(0, 1fr); }
++      .conversation-inner { width: calc(100% - 40px); max-width: 640px; }
++      .composer { max-width: 640px; }
++    }
    </style>
  </head>
  <body>
++  <!-- Interface icons are from Lucide (ISC License). -->
    <div class="app">
 -    <header class="topbar">
 -      <div class="brand"><div class="brand-mark">C</div><div><div class="brand-title">Claritide</div><div class="brand-sub">工作空间 · 本地 Agent</div></div></div>
@@ -306,16 +447,23 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +        <div class="brand-mark" aria-hidden="true">C</div>
 +        <div class="brand-name">Claritide</div>
 +        <span class="spacer"></span>
-+        <button class="text-button" id="returnWorkspace" type="button" data-i18n="返回">返回</button>
++        <button class="text-button" id="returnWorkspace" type="button">
++          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
++          <span data-i18n="返回">返回</span>
++        </button>
 +      </header>
 +      <button class="new-chat" id="newSession" type="button">
++        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></svg>
 +        <span data-i18n="新对话">新对话</span>
 +        <span class="shortcut">Ctrl N</span>
 +      </button>
 +      <div class="sidebar-scroll">
 +        <div class="section-head">
 +          <span data-i18n="项目">项目</span>
-+          <button class="compact-action" id="newProject" type="button" data-i18n="新建" data-i18n-title="新建项目">新建</button>
++          <button class="compact-action" id="newProject" type="button" data-i18n-title="新建项目" data-i18n-aria="新建项目">
++            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
++            <span class="sr-only" data-i18n="新建">新建</span>
++          </button>
 +        </div>
 +        <div id="projectList"></div>
 +        <div class="empty-projects" id="projectEmpty" data-i18n="新建项目并选择本地文件夹，然后直接输入任务。">新建项目并选择本地文件夹，然后直接输入任务。</div>
@@ -332,7 +480,9 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +        <div class="conversation-path" id="sessionMeta"></div>
 +        <span class="spacer"></span>
 +        <details class="header-menu" id="headerMenu">
-+          <summary aria-label="更多操作" data-i18n-aria="更多操作">···</summary>
++          <summary aria-label="更多操作" data-i18n-aria="更多操作">
++            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>
++          </summary>
 +          <div class="menu-popover">
 +            <button id="showActivity" type="button" data-i18n="运行详情">运行详情</button>
 +            <button id="renameActiveSession" type="button" data-i18n="重命名对话">重命名对话</button>
@@ -351,10 +501,13 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +          <textarea id="prompt" rows="2" placeholder="描述你想完成的任务" data-i18n-placeholder="描述你想完成的任务" disabled></textarea>
 +          <div class="attachment-tray" id="attachmentTray" hidden></div>
 +          <div class="composer-row">
-+            <button class="composer-button" id="addContext" type="button" data-i18n="添加" data-i18n-title="添加文本文件" disabled>添加</button>
++            <button class="composer-button" id="addContext" type="button" data-i18n-title="添加文本文件" data-i18n-aria="添加" disabled>
++              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
++              <span class="sr-only" data-i18n="添加">添加</span>
++            </button>
 +            <input id="fileInput" type="file" multiple hidden accept=".txt,.md,.json,.jsonc,.yaml,.yml,.toml,.ini,.csv,.log,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.rs,.go,.java,.c,.cc,.cpp,.h,.hpp,.css,.html,.xml,.sql,.sh,.ps1">
 +
-+            <div class="composer-control">
++            <div class="composer-control project-control">
 +              <button class="composer-button project-button" id="projectButton" type="button" aria-expanded="false" aria-controls="projectPopover" data-i18n="选择项目">选择项目</button>
 +              <div class="control-popover" id="projectPopover" hidden>
 +                <div class="popover-title" data-i18n="选择项目">选择项目</div>
@@ -368,12 +521,15 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +            </div>
 +
 +            <div class="composer-control">
-+              <button class="composer-button" id="permissionButton" type="button" aria-expanded="false" aria-controls="permissionPopover" disabled>受控访问</button>
++              <button class="composer-button" id="permissionButton" type="button" aria-expanded="false" aria-controls="permissionPopover" disabled>
++                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
++                <span id="permissionLabel">请求批准</span>
++              </button>
 +              <div class="control-popover" id="permissionPopover" hidden>
 +                <div class="popover-title" data-i18n="权限">权限</div>
 +                <div class="popover-list">
 +                  <button class="popover-option" type="button" data-permission="controlled">
-+                    <span class="option-title"><span data-i18n="受控访问">受控访问</span><span class="check"></span></span>
++                    <span class="option-title"><span data-i18n="请求批准">请求批准</span><span class="check"></span></span>
 +                    <span class="option-copy" data-i18n="需要授权的操作会先询问你">需要授权的操作会先询问你</span>
 +                  </button>
 +                  <button class="popover-option" type="button" data-permission="readonly">
@@ -391,7 +547,11 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +            <span class="spacer"></span>
 +
 +            <div class="composer-control">
-+              <button class="composer-button model-effort-button" id="modelEffortButton" type="button" aria-expanded="false" aria-controls="modelEffortPopover" disabled>默认 · 深度</button>
++              <button class="composer-button model-effort-button" id="modelEffortButton" type="button" aria-expanded="false" aria-controls="modelEffortPopover" disabled>
++                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9-11a.5.5 0 0 1 .87.43l-1.7 6.8A1 1 0 0 0 12.36 10H20a1 1 0 0 1 .78 1.63l-9 11a.5.5 0 0 1-.87-.43l1.7-6.8A1 1 0 0 0 11.64 14z"></path></svg>
++                <span id="modelEffortLabel">默认 · 深度</span>
++                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
++              </button>
 +              <div class="control-popover align-right" id="modelEffortPopover" hidden>
 +                <div class="model-field">
 +                  <label for="modelSelect" data-i18n="模型">模型</label>
@@ -406,8 +566,15 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +              </div>
 +            </div>
 +
-+            <button class="composer-button voice-button" id="voiceButton" type="button" data-i18n="语音" data-i18n-title="语音输入" disabled>语音</button>
-+            <button class="send-button" id="send" type="button" data-i18n="发送" disabled>发送</button>
++            <button class="composer-button voice-button" id="voiceButton" type="button" data-i18n-title="语音输入" data-i18n-aria="语音" disabled>
++              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><path d="M12 19v3"></path></svg>
++              <span class="sr-only" id="voiceLabel" data-i18n="语音">语音</span>
++            </button>
++            <button class="send-button" id="send" type="button" data-i18n-aria="发送" disabled>
++              <svg class="icon send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
++              <svg class="icon stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="8" x="8" y="8" rx="1"></rect></svg>
++              <span class="sr-only" id="sendLabel" data-i18n="发送">发送</span>
++            </button>
 +          </div>
 +        </div>
 +      </div>
@@ -602,6 +769,7 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +        '新建项目并选择本地文件夹，然后直接输入任务。': 'Create a project, choose a local folder, and start typing.',
 +        '正在检查运行时': 'Checking runtime',
 +        '更多操作': 'More actions',
++        '更多': 'More',
 +        '运行详情': 'Activity',
 +        '重命名对话': 'Rename chat',
 +        '重命名': 'Rename',
@@ -613,7 +781,7 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +        '选择项目': 'Choose project',
 +        '选择一个本地文件夹': 'Choose a local folder',
 +        '权限': 'Permissions',
-+        '受控访问': 'Controlled',
++        '请求批准': 'Ask approval',
 +        '只读访问': 'Read only',
 +        '完全访问': 'Full access',
 +        '需要授权的操作会先询问你': 'Ask before operations that require approval',
@@ -714,6 +882,28 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +
 +      var $ = function (selector, root) { return (root || document).querySelector(selector); };
 +      var $$ = function (selector, root) { return Array.prototype.slice.call((root || document).querySelectorAll(selector)); };
++
++      function createLucideIcon(name) {
++        var namespace = 'http://www.w3.org/2000/svg';
++        var svg = document.createElementNS(namespace, 'svg');
++        svg.setAttribute('class', 'icon');
++        svg.setAttribute('viewBox', '0 0 24 24');
++        svg.setAttribute('aria-hidden', 'true');
++        if (name === 'folder') {
++          var folder = document.createElementNS(namespace, 'path');
++          folder.setAttribute('d', 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z');
++          svg.appendChild(folder);
++        } else {
++          [5, 12, 19].forEach(function (value) {
++            var dot = document.createElementNS(namespace, 'circle');
++            dot.setAttribute('cx', String(value));
++            dot.setAttribute('cy', '12');
++            dot.setAttribute('r', '1');
++            svg.appendChild(dot);
++          });
++        }
++        return svg;
++      }
 +
 +      document.documentElement.lang = locale;
 +      document.title = english ? 'Claritide · AI Workbench' : 'Claritide · AI 工作台';
@@ -830,7 +1020,7 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +        var details = document.createElement('details');
 +        details.className = 'item-menu';
 +        var summary = document.createElement('summary');
-+        summary.textContent = '···';
++        summary.appendChild(createLucideIcon('ellipsis'));
 +        summary.setAttribute('aria-label', tr('更多操作'));
 +        var popover = document.createElement('div');
 +        popover.className = 'menu-popover';
@@ -874,6 +1064,7 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +          var name = document.createElement('span');
 +          name.className = 'project-name';
 +          name.textContent = project.name;
++          row.appendChild(createLucideIcon('folder'));
 +          row.appendChild(name);
 +          row.addEventListener('click', function () { selectProject(project.id); });
 +          shell.appendChild(row);
@@ -1207,7 +1398,7 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +      function currentPermission() { var session = activeSession(); return session ? session.permission : state.draftPermission; }
 +
 +      function permissionLabel(value) {
-+        return tr(value === 'readonly' ? '只读访问' : value === 'full' ? '完全访问' : '受控访问');
++        return tr(value === 'readonly' ? '只读访问' : value === 'full' ? '完全访问' : '请求批准');
 +      }
 +
 +      function fillModels(models) {
@@ -1269,18 +1460,20 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
 +        $('#voiceButton').title = !SpeechRecognition ? tr('当前系统不支持语音输入') : tr('语音输入');
 +
 +        $('#send').disabled = busy ? !state.turnActive : !projectReady || !runtimeReady || !promptHasValue;
-+        $('#send').textContent = tr(state.turnActive ? '停止' : '发送');
++        $('#sendLabel').textContent = tr(state.turnActive ? '停止' : '发送');
++        $('#send').setAttribute('aria-label', tr(state.turnActive ? '停止' : '发送'));
 +        $('#send').classList.toggle('stop-state', state.turnActive);
 +
 +        $('#sessionHeading').textContent = session ? session.name : tr('新对话');
 +        $('#sessionMeta').textContent = project ? friendlyPath(project.path) : '';
 +        $('#projectButton').textContent = project ? project.name : tr('选择项目');
-+        $('#permissionButton').textContent = permissionLabel(currentPermission());
-+        $('#modelEffortButton').textContent = modelLabel(currentModel()) + ' · ' + effortLabel(currentEffort());
++        $('#permissionLabel').textContent = permissionLabel(currentPermission());
++        $('#modelEffortLabel').textContent = modelLabel(currentModel()) + ' · ' + effortLabel(currentEffort());
 +        $('#modelSelect').value = currentModel();
 +        $('#effortRange').value = String(Math.max(0, EFFORT_LEVELS.indexOf(currentEffort())));
 +        $('#effortValue').textContent = effortLabel(currentEffort());
-+        $('#voiceButton').textContent = tr(state.voiceActive ? '正在聆听' : '语音');
++        $('#voiceLabel').textContent = tr(state.voiceActive ? '正在聆听' : '语音');
++        $('#voiceButton').setAttribute('aria-label', tr(state.voiceActive ? '正在聆听' : '语音'));
 +        $('#voiceButton').classList.toggle('listening', state.voiceActive);
 +
 +        $$('[data-permission]').forEach(function (button) {
@@ -1858,7 +2051,7 @@ index 702a937d387b6d85fc12948762aec0114d48a203..4bec13202f5cc6c17f3a48a419a7737b
      })();
    </script>
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
-index 505c83fc7ace253a2d232346ff8b97bf7897de9d..4f68404454899f049c3a3034facf3adb5aa0363b 100644
+index 505c83f..4f68404 100644
 --- a/src-tauri/src/agent_runtime.rs
 +++ b/src-tauri/src/agent_runtime.rs
 @@ -42,19 +42,32 @@ const RUNTIME_EXECUTABLE_ENV: &str = "CLARITIDE_AGENT_EXECUTABLE";
@@ -2351,7 +2544,7 @@ index 505c83fc7ace253a2d232346ff8b97bf7897de9d..4f68404454899f049c3a3034facf3adb
      fn controlled_args_force_structured_permissions_without_bypass() {
          let args = runtime_args(
 diff --git a/src-tauri/src/agent_workbench.rs b/src-tauri/src/agent_workbench.rs
-index 38dc896d339398ea81155e2117332126f7cb8d22..94d5a7824124c05c475c2e6337756848c71cf1d8 100644
+index 38dc896..94d5a78 100644
 --- a/src-tauri/src/agent_workbench.rs
 +++ b/src-tauri/src/agent_workbench.rs
 @@ -1,6 +1,8 @@
@@ -2437,7 +2630,7 @@ index 38dc896d339398ea81155e2117332126f7cb8d22..94d5a7824124c05c475c2e6337756848
          error
      })
 diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
-index 92a2e6d2637af86f10e7316249f3b39d805e2173..a28bcdac67d954d72bcd1ed103825d19f85d3c7e 100644
+index 92a2e6d..a28bcda 100644
 --- a/src-tauri/src/seeseeyou_bridge.js
 +++ b/src-tauri/src/seeseeyou_bridge.js
 @@ -13,6 +13,7 @@

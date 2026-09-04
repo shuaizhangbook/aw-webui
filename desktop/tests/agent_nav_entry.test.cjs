@@ -145,7 +145,7 @@ test('visible AI Workbench entry invokes the native opener with the active local
       {
         installation_id: 'install-test-123',
         model: 'gpt-5.6-sol',
-        client_version: '0.2.1',
+        client_version: '0.2.2',
       },
     );
     assert.deepEqual(JSON.parse(JSON.stringify(harness.calls[1][1].runtime)), {
