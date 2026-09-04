@@ -38,6 +38,7 @@ function loadEntry(documentLanguage) {
     createElement() {
       const listeners = new Map();
       return {
+        dataset: {},
         style: {},
         addEventListener(name, listener) { listeners.set(name, listener); },
         setAttribute() {},
@@ -125,13 +126,15 @@ test('visible AI Workbench entry invokes the native opener with the active local
       preventDefault() {},
       stopPropagation() {},
     });
-    await new Promise(resolve => setImmediate(resolve));
-
     assert.equal(harness.button.textContent, expectedLabel);
     assert.equal(
       harness.getTransition().textContent,
       expectedLocale === 'en' ? 'Opening AI Workbench…' : '正在打开 AI 工作台…',
     );
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(harness.getTransition(), null);
+    assert.equal(harness.button.disabled, false);
     assert.deepEqual(harness.calls.map(call => call[0]), [
       'get_or_create_installation_id',
       'open_agent_workbench',
@@ -173,4 +176,19 @@ test('AI Workbench entry survives initial render and language changes', () => {
     source,
     /work-i18n-change'[\s\S]*ensureAgentWorkbenchEntry\(\);\s*ensureDesktopSync\(true\);/,
   );
+});
+
+test('desktop replaces the Web assistant navigation with the local workbench action', () => {
+  assert.match(source, /document\.getElementById\('navAssistant'\)/);
+  assert.match(source, /var button = assistantButton \|\| generatedButton/);
+  assert.match(source, /event\.stopImmediatePropagation\(\)/);
+  assert.match(source, /launchAgentWorkbench\(button, event\)/);
+});
+
+test('unauthorized installations are enrolled and retried before opening CCB', () => {
+  assert.match(source, /runtimeDeviceNotAuthorized\(error\)/);
+  assert.match(source, /await activateAgentInstallation\(installation, token\)/);
+  assert.match(source, /\/devices\/auto-enroll/);
+  assert.match(source, /await invoke\('configure_sync'/);
+  assert.match(source, /return apiRequest\('\/me\/ai\/runtime-config' \+ query, \{\}, token\)/);
 });
