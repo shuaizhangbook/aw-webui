@@ -62,11 +62,17 @@ jobs:
           git -C activitywatch/aw-tauri apply --unidiff-zero \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-seeseeyou.patch"
           git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-nav-entry.patch"
+          git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-same-window.patch"
           git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-full-access.patch"
           git -C activitywatch/aw-tauri apply \
             "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-bundled-runtime.patch"
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-installer-language.patch"
+          git -C activitywatch/aw-tauri apply \
+            "$GITHUB_WORKSPACE/custom-webui/desktop/patches/aw-tauri-agent-windows-navigation.patch"
           cp custom-webui/desktop/aw-tauri.iss activitywatch/scripts/package/aw-tauri.iss
           cp custom-webui/desktop/inno/ChineseSimplified.isl \
             activitywatch/scripts/package/ChineseSimplified.isl
@@ -123,11 +129,20 @@ jobs:
           cache: npm
           cache-dependency-path: custom-webui/package-lock.json
 
-      - name: Test the injected desktop bridge
+      - name: Run desktop preflight tests
         run: |
           node --check activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js
+          node --check activitywatch/aw-tauri/src-tauri/src/agent_workbench_bridge.js
           SEESEEYOU_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js" \
             node --test custom-webui/desktop/tests/seeseeyou_bridge.test.cjs
+          SEESEEYOU_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/seeseeyou_bridge.js" \
+            node --test custom-webui/desktop/tests/agent_nav_entry.test.cjs
+          CLARITIDE_INSTALLER_SCRIPT="$GITHUB_WORKSPACE/custom-webui/desktop/aw-tauri.iss" \
+            node --test custom-webui/desktop/tests/installer_language.test.cjs
+          CLARITIDE_AGENT_BRIDGE_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/src/agent_workbench_bridge.js" \
+            node --test custom-webui/desktop/tests/agent_workbench_bridge.test.cjs
+          CLARITIDE_AGENT_HTML_PATH="$GITHUB_WORKSPACE/activitywatch/aw-tauri/src-tauri/assets/agent-workbench.html" \
+            node --test custom-webui/desktop/tests/agent_workbench_html.test.cjs
 
       - name: Set up Bun for the pinned CCB build
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -215,11 +230,31 @@ jobs:
           assert 'https://watch.sding.me/*' in remote['remote']['urls']
           assert 'allow-get-sync-status' in remote['permissions']
           assert 'allow-open-external' in remote['permissions']
+          assert 'allow-open-agent-workbench' in remote['permissions']
+          local = capabilities.get('agent-workbench')
+          assert local, 'agent-workbench capability was not compiled'
+          assert local['local'] is True
+          assert local['windows'] == ['main']
+          for permission in (
+              'allow-agent-get-status',
+              'allow-agent-select-workspace',
+              'allow-agent-start',
+              'allow-agent-send',
+              'allow-agent-interrupt',
+              'allow-agent-close',
+              'allow-agent-poll-events',
+          ):
+              assert permission in local['permissions']
 
           manifests = json.loads((schema_dir / 'acl-manifests.json').read_text(encoding='utf-8'))
           app_permissions = manifests['__app-acl__']['permissions']
           assert app_permissions['allow-get-sync-status']['commands']['allow'] == ['get_sync_status']
           assert app_permissions['allow-open-external']['commands']['allow'] == ['open_external']
+          assert app_permissions['allow-open-agent-workbench']['commands']['allow'] == [
+              'open_agent_workbench'
+          ]
+          assert app_permissions['allow-agent-start']['commands']['allow'] == ['agent_start']
+          assert app_permissions['allow-agent-send']['commands']['allow'] == ['agent_send']
           PY
 
       - name: Install packaging dependencies
