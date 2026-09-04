@@ -1163,13 +1163,18 @@
         $('#deleteActiveSession').disabled = !session;
       }
 
-      async function closeNativeSession() {
+      async function closeNativeSession(clearOnline) {
         var id = state.nativeSessionId;
         state.nativeSessionId = '';
         state.turnActive = false;
         state.starting = false;
-        if (id && bridge) {
-          try { await bridge.close({ sessionId: id }); } catch (_error) {}
+        if (bridge && (id || clearOnline)) {
+          try {
+            await bridge.close({
+              sessionId: id || null,
+              clearOnline: clearOnline === true
+            });
+          } catch (_error) {}
         }
       }
 
@@ -1509,7 +1514,7 @@
       }
 
       async function returnToWorkspace() {
-        await closeNativeSession();
+        await closeNativeSession(true);
         window.location.assign(WORKSPACE_URL);
       }
 
