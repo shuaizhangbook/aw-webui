@@ -38,6 +38,9 @@ function harness(options = {}) {
       if (id && this.id !== id[1]) return false;
       const tag = selector.match(/^[\w-]+/);
       if (tag && this.tagName !== tag[0].toUpperCase()) return false;
+      for (const match of selector.matchAll(/\[([\w-]+)(?:="([^"]*)")?\]/g)) {
+        if (!(match[1] in this.attributes) || match[2] !== undefined && this.attributes[match[1]] !== match[2]) return false;
+      }
       return [...selector.matchAll(/\.([\w-]+)/g)].every(match => this.className.split(/\s+/).includes(match[1]));
     }
     querySelectorAll(selector) {
@@ -58,7 +61,7 @@ function harness(options = {}) {
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   }
   const root = new Element('html'), body = root.appendChild(new Element('body'));
-  for (const id of ['conversationInner', 'conversation', 'prompt']) { const node = body.appendChild(new Element('div')); node.id = id; }
+  for (const id of new Set([...html.matchAll(/\bid="([\w-]+)"/g)].map(match => match[1]))) { const node = body.appendChild(new Element('div')); node.id = id; node.value = ''; }
   const copied = [], toasts = [], decisions = [], navigation = [];
   document = {
     documentElement: root, body, activeElement: null,
@@ -78,7 +81,8 @@ function harness(options = {}) {
   vm.runInNewContext(script.replace('void init();', `
     renderProjects = syncControls = scrollConversation = recordEvent = removeRunIndicator = updateRunIndicator = save = function () {};
     showToast = function (text) { toasts.push(text); };
-    window.testApi = { state, renderAnswer, appendMessage, appendResultCard, renderApproval, handleEvent, copyOutputText, markdownTarget };
+    window.testApi = { state, renderAnswer, appendMessage, appendResultCard, appendErrorCard, renderApproval, handleEvent, copyOutputText, markdownTarget,
+      fillModels, setModel, onModelKeydown, renderTaskSummary, normalizeSession, taskRuns: ClaritideTaskRuns };
   `), context);
   const api = context.window.testApi;
   const session = { id: 'chat', messages: [], events: [] };
@@ -147,6 +151,91 @@ test('a new turn cannot overwrite a previous formatted response', () => {
   h.handleEvent({ sessionId: 'native', type: 'assistant_final', payload: { text: '# Second answer' } });
   assert.deepEqual(Array.from(h.session.messages, message => message.text), ['First', '# First answer', 'Second', '# Second answer']);
   assert.deepEqual(h.host.querySelectorAll('h1').map(node => node.textContent), ['First answer', 'Second answer']);
+});
+
+test('short user messages use one outer width constraint and retain the exact short text', () => {
+  const h = harness(); h.appendMessage('user', 'hi', 1, false, []);
+  const wrap = h.host.querySelector('.user-message-wrap');
+  assert.ok(wrap); assert.equal(wrap.querySelector('.user-bubble').textContent, 'hi');
+  assert.match(html, /\.user-message-wrap\s*\{[^}]*max-width:\s*min\(560px, 82%\)/);
+  for (const rule of html.matchAll(/\.user-bubble\s*\{([^}]+)\}/g)) assert.doesNotMatch(rule[1], /max-width:\s*min\(/);
+});
+
+test('model choices match authorization, keep the saved unavailable choice and support keyboard navigation', async () => {
+  const h = harness(); h.state.nativeSessionId = ''; h.session.model = 'gpt-one';
+  h.state.status = { available: true, allowedModels: ['gpt-one', 'gpt-two'] };
+  h.fillModels(h.state.status.allowedModels);
+  const list = h.document.querySelector('#modelSelect');
+  assert.equal(list.children.length, 2); assert.equal(list.children[0].tagName, 'BUTTON');
+  assert.equal(list.children[0].attributes['aria-selected'], 'true');
+  list.children[0].focus();
+  const key = value => h.onModelKeydown({ key: value, preventDefault() {}, stopPropagation() {} });
+  key('ArrowDown'); assert.equal(h.document.activeElement.value, 'gpt-two');
+  await h.document.activeElement.click(); assert.equal(h.session.model, 'gpt-two');
+  key('Home'); assert.equal(h.document.activeElement.value, 'gpt-one');
+  key('End'); assert.equal(h.document.activeElement.value, 'gpt-two');
+  key('Escape'); assert.equal(h.document.activeElement.id, 'modelEffortButton');
+  assert.equal(h.document.querySelector('#modelEffortPopover').hidden, true);
+  h.state.status.allowedModels = ['gpt-one']; h.fillModels(['gpt-one']);
+  assert.equal(list.children[0].value, 'gpt-two'); assert.equal(list.children[0].disabled, true);
+  assert.match(list.children[0].textContent, /unavailable/);
+  assert.match(h.document.querySelector('#modelAvailabilityNote').textContent, /one available model/);
+  await list.children[0].click(); assert.equal(h.session.model, 'gpt-two');
+});
+
+test('stale model options cannot change another account and expired authorization keeps choices disabled', async () => {
+  const h = harness(); h.state.nativeSessionId = ''; h.session.model = 'gpt-one';
+  h.state.status = { available: true, allowedModels: ['gpt-one', 'gpt-two'] }; h.fillModels(h.state.status.allowedModels);
+  const oldOption = h.document.querySelector('#modelSelect').children[1];
+  h.state.storageEpoch += 1; await oldOption.click(); assert.equal(h.session.model, 'gpt-one');
+  h.state.status = { available: false, allowedModels: [] }; h.fillModels([]);
+  assert.equal(h.document.querySelector('#modelSelect').children[0].disabled, true);
+  h.setModel('gpt-two'); assert.equal(h.session.model, 'gpt-one');
+});
+
+test('session mismatch shows a Chinese summary with exact native details folded and retained', () => {
+  const h = harness({ locale: 'zh-CN' });
+  const raw = 'The agent runtime emitted an event for a different session';
+  h.session.lastError = { code: 'session_mismatch', message: raw };
+  h.appendErrorCard(raw, false);
+  const card = h.host.querySelector('.error-card');
+  assert.match(card.querySelector('.card-copy').textContent, /会话标识不一致/);
+  assert.doesNotMatch(card.querySelector('.card-copy').textContent, /The agent runtime|已修复/);
+  const details = card.querySelector('details'); assert.ok(!details.open);
+  assert.equal(details.querySelector('pre').textContent, 'session_mismatch\n' + raw);
+});
+
+test('tool evidence is rendered inertly, persisted on its owner, and cannot be routed into the viewed chat', () => {
+  const h = harness();
+  h.taskRuns.start(h.session, 'run-1', 'Create report', 1);
+  h.handleEvent({ sessionId: 'native', type: 'tool_started', payload: { toolUseId: 'write', tool: 'Write', input: { file_path: '<img src=x>' } } });
+  h.handleEvent({ sessionId: 'native', type: 'tool_completed', payload: { toolUseId: 'write', tool: 'Write', outcome: 'succeeded', evidence: { kind: 'file', status: 'succeeded', path: '<img src=x>' }, preview: '<script>bad()</script>' } });
+  const card = h.host.querySelector('#taskSummary');
+  assert.match(card.textContent, /1 recorded file changes/);
+  assert.equal(card.querySelectorAll('img').length + card.querySelectorAll('script').length, 0);
+  assert.match(card.textContent, /<img src=x>/);
+  const saved = JSON.parse(JSON.stringify(h.session.taskRuns)); assert.equal(saved[0].operations[0].evidence.path, '<img src=x>');
+  const other = { id: 'other', messages: [], events: [] }; h.state.projects[0].sessions.push(other); h.state.activeSessionId = 'other';
+  h.host.textContent = '';
+  h.handleEvent({ sessionId: 'native', type: 'tool_started', payload: { toolUseId: 'read', tool: 'Read' } });
+  assert.equal(h.session.taskRuns[0].operations.length, 2); assert.equal(other.taskRuns, undefined); assert.equal(h.host.textContent, '');
+  h.state.storageEpoch += 1;
+  h.handleEvent({ sessionId: 'native', type: 'tool_completed', payload: { toolUseId: 'read', outcome: 'succeeded' } });
+  assert.equal(h.session.taskRuns[0].operations[1].status, 'running', 'late prior-account events are discarded');
+});
+
+test('plans and failed checks remain visible after a successful turn result and history reload', () => {
+  const h = harness(); h.taskRuns.start(h.session, 'run-1', 'Check report', 1);
+  h.handleEvent({ sessionId: 'native', type: 'tool_started', payload: { toolUseId: 'plan', tool: 'TodoWrite' } });
+  h.handleEvent({ sessionId: 'native', type: 'tool_completed', payload: { toolUseId: 'plan', outcome: 'succeeded', plan: { items: [{ content: 'Review report', status: 'in_progress', activeForm: 'Reviewing report' }] } } });
+  h.handleEvent({ sessionId: 'native', type: 'tool_started', payload: { toolUseId: 'check', tool: 'Bash' } });
+  h.handleEvent({ sessionId: 'native', type: 'tool_completed', payload: { toolUseId: 'check', outcome: 'failed', isError: true, evidence: { kind: 'command', status: 'failed', command: 'npm test', exitCode: 1 }, preview: 'One assertion failed' } });
+  h.handleEvent({ sessionId: 'native', type: 'turn_completed', payload: { success: true } });
+  h.normalizeSession(h.session); h.host.textContent = ''; h.renderTaskSummary();
+  const card = h.host.querySelector('#taskSummary');
+  assert.match(card.textContent, /0 \/ 1 steps/); assert.match(card.textContent, /Bash · Run failed/);
+  assert.match(card.textContent, /Exit code: 1/); assert.match(card.textContent, /One assertion failed/);
+  assert.match(card.textContent, /Run finished/); assert.doesNotMatch(card.textContent, /Tests passed/);
 });
 
 test('completion shows only a finished run and copies the actual response; no stale previous-turn copy action', async () => {

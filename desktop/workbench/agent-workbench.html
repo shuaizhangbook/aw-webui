@@ -179,7 +179,8 @@
     .welcome p { max-width: 500px; margin: 0; color: var(--muted); line-height: 1.7; }
     .message { padding: 16px 0; }
     .message.user { display: flex; justify-content: flex-end; }
-    .user-bubble { max-width: min(620px, 82%); padding: 10px 14px; border-radius: 16px; background: var(--soft); color: #30322f; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .user-message-wrap { min-width: 0; max-width: min(560px, 82%); }
+    .user-bubble { width: fit-content; max-width: 100%; margin-left: auto; padding: 10px 14px; border-radius: 16px; background: var(--soft); color: #30322f; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
     .message.agent { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; }
     .agent-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: var(--mint); color: #fff; font-size: 10px; font-weight: 800; }
     .message-head { display: flex; align-items: center; gap: 8px; margin: 2px 0 7px; }
@@ -268,8 +269,27 @@
     .option-title .check { margin-left: auto; color: var(--mint-dark); }
     .option-copy { margin-top: 3px; color: var(--dim); font-size: 10px; line-height: 1.45; }
     .popover-divider { height: 1px; margin: 7px 3px; background: var(--line); }
-    .model-field label, .effort-field legend { display: block; margin: 0 0 7px; color: var(--muted); font-size: 11px; font-weight: 650; }
-    .model-field select { width: 100%; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .model-field label, .model-field > p, .effort-field legend { display: block; margin: 0 0 7px; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .model-options { display: grid; gap: 3px; max-height: min(260px, 35vh); overflow-y: auto; }
+    .model-option { display: flex; align-items: center; gap: 8px; min-height: 40px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; overflow-wrap: anywhere; font-size: 12px; }
+    .model-option:hover, .model-option[aria-selected="true"] { background: var(--soft); }
+    .model-option[aria-selected="true"]::after { content: '✓'; margin-left: auto; flex-shrink: 0; }
+    .model-option:disabled { cursor: default; color: var(--dim); }
+    .task-summary { margin: 14px 0; padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; font-size: 12px; }
+    .task-summary-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .task-summary-head strong { font-size: 12px; }
+    .task-summary-head span, .task-note { color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .task-goal { margin: 8px 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .task-plan { max-height: 240px; overflow-y: auto; margin: 9px 0; padding: 0; list-style: none; }
+    .task-plan li { display: flex; align-items: baseline; gap: 8px; margin: 7px 0; line-height: 1.6; overflow-wrap: anywhere; }
+    .task-plan li span:first-child { color: var(--muted); flex-shrink: 0; }
+    .task-records { margin-top: 9px; }
+    .task-records > summary { cursor: pointer; color: var(--muted); padding: 3px 0; }
+    .task-operation { padding: 9px 0; border-bottom: 1px solid var(--line); }
+    .task-operation:last-child { border: 0; }
+    .task-operation p { margin: 4px 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; }
+    .task-operation code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 11px; line-height: 1.6; }
+    .activity .task-summary { margin: 10px; }
     .effort-field { margin: 14px 0 0; padding: 0; border: 0; }
     .effort-value { float: right; color: var(--mint-dark); font-weight: 700; }
     .effort-field input[type="range"] { width: 100%; accent-color: var(--mint); }
@@ -375,7 +395,7 @@
     .welcome p { max-width: 460px; font-size: 13px; }
     .message { padding: 12px 0; }
     .user-bubble {
-      max-width: min(560px, 82%);
+      max-width: 100%;
       padding: 9px 13px;
       border-radius: 15px;
       background: #f3f3f0;
@@ -626,15 +646,16 @@
               </button>
               <div class="control-popover align-right" id="modelEffortPopover" hidden>
                 <div class="model-field">
-                  <label for="modelSelect" data-i18n="模型">模型</label>
-                  <select id="modelSelect"><option value="default">默认</option></select>
+                  <p id="modelListLabel" data-i18n="模型">模型</p>
+                  <div id="modelSelect" class="model-options" role="listbox" aria-labelledby="modelListLabel" tabindex="-1"></div>
+                  <p class="popover-note" id="modelAvailabilityNote"></p>
                 </div>
-                <fieldset class="effort-field">
+                <fieldset class="effort-field" id="effortField" hidden>
                   <legend><span data-i18n="思考深度">思考深度</span><span class="effort-value" id="effortValue">深度</span></legend>
                   <input id="effortRange" type="range" min="0" max="4" step="1" value="2" aria-label="思考深度" data-i18n-aria="思考深度">
                   <div class="effort-scale"><span data-i18n="更快">更快</span><span data-i18n="更深入">更深入</span></div>
                 </fieldset>
-                <p class="popover-note" data-i18n="复杂任务使用更高深度会更可靠，但耗时也会增加。">复杂任务使用更高深度会更可靠，但耗时也会增加。</p>
+                <p class="popover-note" id="effortNote" hidden data-i18n="复杂任务使用更高深度会更可靠，但耗时也会增加。">复杂任务使用更高深度会更可靠，但耗时也会增加。</p>
               </div>
             </div>
 
@@ -859,6 +880,89 @@
       });
     }
     // END CLARITIDE_ACCOUNT_HISTORY_STORE
+
+    // BEGIN CLARITIDE_TASK_RUNS
+    // Store only bounded, structured tool evidence. A completed Agent turn is
+    // never evidence that a command, a test, or the user's goal succeeded.
+    var ClaritideTaskRuns = (function () {
+      'use strict';
+      function text(value, limit) { return typeof value === 'string' ? value.slice(0, limit) : ''; }
+      function toolId(value) { return typeof value === 'string' && /^[!-~]{1,256}$/.test(value) ? value : ''; }
+      function outcome(value) { return ['succeeded', 'failed', 'unknown'].indexOf(value) >= 0 ? value : 'unknown'; }
+      function plan(value) {
+        if (!value || !Array.isArray(value.items)) return null;
+        return { items: value.items.slice(0, 60).filter(function (item) { return item && typeof item.content === 'string'; }).map(function (item) {
+          return { content: text(item.content, 500), activeForm: text(item.activeForm, 500), status: ['pending', 'in_progress', 'completed'].indexOf(item.status) >= 0 ? item.status : 'pending' };
+        }), truncated: Boolean(value.truncated || value.items.length > 60) };
+      }
+      function evidence(value) {
+        if (!value || ['file', 'command'].indexOf(value.kind) < 0) return null;
+        return { kind: value.kind, path: text(value.path, 2000), command: text(value.command, 2000), status: outcome(value.status), exitCode: Number.isInteger(value.exitCode) ? value.exitCode : null, truncated: Boolean(value.truncated || typeof value.path === 'string' && value.path.length > 2000 || typeof value.command === 'string' && value.command.length > 2000) };
+      }
+      function operation(value) {
+        if (!value || !toolId(value.id)) return null;
+        var proof = evidence(value.evidence);
+        var status = ['running', 'succeeded', 'failed', 'unknown'].indexOf(value.status) >= 0 ? value.status : 'unknown';
+        if (proof && proof.kind === 'command' && proof.status !== 'succeeded') status = proof.status;
+        return { id: toolId(value.id), tool: text(value.tool, 100), detail: text(value.detail, 2000), status: status, preview: text(value.preview, 2000), truncated: Boolean(value.truncated), evidence: proof };
+      }
+      function restore(values) {
+        if (!Array.isArray(values)) return [];
+        return values.slice(-12).filter(function (run) { return run && typeof run.id === 'string'; }).map(function (run) {
+          return { id: text(run.id, 200), goal: text(run.goal, 2000), startedAt: Number(run.startedAt) || 0, endedAt: Number(run.endedAt) || 0,
+            status: ['finished', 'failed', 'stopped', 'interrupted'].indexOf(run.status) >= 0 ? run.status : 'interrupted',
+            plan: plan(run.plan), operations: (Array.isArray(run.operations) ? run.operations : []).slice(-80).map(operation).filter(Boolean).map(function (item) { if (item.status === 'running') item.status = 'unknown'; return item; }),
+            truncated: Boolean(run.truncated || (Array.isArray(run.operations) && run.operations.length > 80)) };
+        });
+      }
+      function start(session, id, goal, time) {
+        if (!Array.isArray(session.taskRuns)) session.taskRuns = [];
+        var run = { id: id, goal: text(goal, 2000), startedAt: time, endedAt: 0, status: 'running', plan: null, operations: [], truncated: false };
+        session.taskRuns.push(run);
+        if (session.taskRuns.length > 12) session.taskRunsTruncated = true;
+        session.taskRuns = session.taskRuns.slice(-12);
+        return run;
+      }
+      function update(session, type, payload, time) {
+        var run = session.taskRuns && session.taskRuns[session.taskRuns.length - 1];
+        if (!run || run.status !== 'running') return false;
+        payload = payload || {};
+        if (type === 'tool_started' || type === 'tool_completed') {
+          var id = toolId(payload.toolUseId);
+          if (!id) return false;
+          var item = run.operations.find(function (entry) { return entry.id === id; });
+          if (type === 'tool_started') {
+            if (!item) {
+              if (run.operations.length >= 80) { run.operations.shift(); run.truncated = true; }
+              item = { id: id, tool: '', detail: '', status: 'running', preview: '', truncated: false, evidence: null };
+              run.operations.push(item);
+            }
+            item.tool = text(payload.tool || payload.toolName, 100) || item.tool;
+            var input = payload.input || {};
+            var detail = input.file_path || input.notebook_path || input.command;
+            item.detail = text(detail, 2000) || item.detail;
+            item.truncated = item.truncated || Boolean(input.truncated || typeof detail === 'string' && detail.length > 2000);
+          } else {
+            if (!item || item.status !== 'running') return false;
+            item.status = payload.isError === true ? 'failed' : outcome(payload.outcome);
+            item.tool = text(payload.tool, 100) || item.tool;
+            item.preview = text(payload.preview, 2000);
+            item.truncated = item.truncated || Boolean(payload.previewTruncated || typeof payload.preview === 'string' && payload.preview.length > 2000);
+            item.evidence = evidence(payload.evidence);
+            if (item.evidence && item.evidence.kind === 'command' && item.status !== 'failed' && item.evidence.status !== 'succeeded') item.status = item.evidence.status;
+            if (item.evidence && item.status !== 'succeeded') item.evidence.status = item.status;
+            if (item.status === 'succeeded' && payload.plan) run.plan = plan(payload.plan);
+          }
+        } else if (type === 'turn_completed' || (type === 'error' && payload.terminal === true) || (type === 'stopped' && !payload.settling)) {
+          run.status = type === 'turn_completed' ? 'finished' : type === 'error' ? 'failed' : 'stopped';
+          run.endedAt = time;
+          run.operations.forEach(function (item) { if (item.status === 'running') item.status = 'unknown'; });
+        } else return false;
+        return true;
+      }
+      return { start: start, update: update, restore: restore };
+    })();
+    // END CLARITIDE_TASK_RUNS
 
     (function () {
       'use strict';
@@ -1273,6 +1377,7 @@
         if (session.permission === 'full') session.permission = 'controlled';
         session.messages = Array.isArray(session.messages) ? session.messages : [];
         session.events = Array.isArray(session.events) ? session.events.slice(-80) : [];
+        session.taskRuns = ClaritideTaskRuns.restore(session.taskRuns);
         if (session.lastRequest && !validStoredDraft(session.lastRequest)) delete session.lastRequest;
         if (session.lastFailedRequest && !validStoredDraft(session.lastFailedRequest)) delete session.lastFailedRequest;
         return session;
@@ -1590,6 +1695,7 @@
         popover.hidden = !opening;
         button.setAttribute('aria-expanded', String(opening));
         closeMenus();
+        if (opening && name === 'modelEffort') focusModelOption();
       }
 
       function actionMenu(kind, id) {
@@ -1909,6 +2015,7 @@
         article.className = 'message ' + (role === 'user' ? 'user' : 'agent');
         if (role === 'user') {
           var userWrap = document.createElement('div');
+          userWrap.className = 'user-message-wrap';
           if (attachments && attachments.length) {
             var labels = document.createElement('div');
             labels.className = 'message-attachments';
@@ -2023,6 +2130,16 @@
         return Boolean(state.turnActive || state.starting || state.pendingSend || state.switchingConversation || state.storageReady === false || (typeof browsingHistory === 'function' && browsingHistory()));
       }
 
+      function errorSummary(code, message) {
+        if (code === 'session_mismatch' || /event for a different session/i.test(message)) return english
+          ? 'The session could not be matched, so this run was stopped. Your chat is retained. Review the details below before retrying.'
+          : '本次执行因会话标识不一致而停止。对话已保留，可查看下方详情后重试。';
+        if (/authoriz|expired|sign in/i.test(code + ' ' + message)) return english ? 'AI authorization is unavailable. Sign in again, then retry your saved request.' : 'AI 授权暂不可用，请重新登录后重试已保留的请求。';
+        if (/model.*(?:unavailable|not allowed)|model_not_allowed/i.test(code + ' ' + message)) return english ? 'The selected model is unavailable. Choose an available model and retry.' : '当前模型不可用，请选择可用模型后重试。';
+        if (/resume/i.test(code + ' ' + message)) return english ? 'The previous runtime session could not be restored. Your saved chat is retained.' : '之前的执行会话未能恢复，已保存的对话仍然保留。';
+        return english ? 'This run could not continue. Your chat and request are retained; check the details before retrying.' : '本次执行未能继续，对话和请求已保留。请查看详情后重试。';
+      }
+
       function appendErrorCard(message, approvalUnsupported) {
         var errorSessionId = state.activeSessionId;
         var errorEpoch = state.storageEpoch;
@@ -2033,7 +2150,9 @@
         title.textContent = approvalUnsupported ? tr('调整权限') : tr('任务失败');
         var copy = document.createElement('p');
         copy.className = 'card-copy';
-        copy.textContent = approvalUnsupported ? tr('当前受控模式需要工具审批，但审批桥接尚未启用。请新建对话并选择只读或完全访问。') : safeText(message);
+        var savedError = activeSession() && activeSession().lastError;
+        var errorCode = savedError && savedError.code || '';
+        copy.textContent = approvalUnsupported ? tr('当前受控模式需要工具审批，但审批桥接尚未启用。请新建对话并选择只读或完全访问。') : errorSummary(errorCode, safeText(message));
         var actions = document.createElement('div');
         actions.className = 'card-actions';
         var retry = document.createElement('button');
@@ -2095,6 +2214,13 @@
         actions.appendChild(details);
         card.appendChild(title);
         card.appendChild(copy);
+        var rawDetails = document.createElement('details');
+        rawDetails.className = 'approval-details';
+        var rawSummary = document.createElement('summary');
+        rawSummary.textContent = english ? 'Error details' : '错误详情';
+        var raw = document.createElement('pre');
+        raw.textContent = [errorCode, safeText(message)].filter(Boolean).join('\n');
+        rawDetails.appendChild(rawSummary); rawDetails.appendChild(raw); card.appendChild(rawDetails);
         card.appendChild(actions);
         $('#conversationInner').appendChild(card);
         scrollConversation();
@@ -2200,6 +2326,7 @@
         session.messages.forEach(function (message) {
           appendMessage(message.role, message.text, message.time, false, message.attachments || []);
         });
+        renderTaskSummary();
         if (session.lastError) appendErrorCard(session.lastError.message, session.lastError.code === 'tool_approval_unsupported');
         else if (session.lastResult) appendResultCard(session.lastResult);
         if (viewingRunningSession()) {
@@ -2264,11 +2391,78 @@
         if (session === activeSession()) renderActivity();
       }
 
+      function taskStatus(value) {
+        return (english ? { running: 'In progress', finished: 'Run finished', failed: 'Run failed', stopped: 'Stopped', interrupted: 'Interrupted', succeeded: 'Succeeded', unknown: 'Result unconfirmed' }
+          : { running: '执行中', finished: '本次执行结束', failed: '执行失败', stopped: '已停止', interrupted: '执行中断', succeeded: '执行成功', unknown: '结果待确认' })[value] || value;
+      }
+
+      function taskSummaryCard(run, expanded) {
+        var card = document.createElement('section'); card.className = 'task-summary';
+        var head = document.createElement('div'); head.className = 'task-summary-head';
+        var title = document.createElement('strong'); title.textContent = english ? 'Plan and results' : '计划与执行结果';
+        var status = document.createElement('span'); status.textContent = taskStatus(run.status);
+        head.appendChild(title); head.appendChild(status); card.appendChild(head);
+        var goal = document.createElement('p'); goal.className = 'task-goal'; goal.textContent = run.goal.length > 180 ? run.goal.slice(0, 180) + '…' : run.goal; card.appendChild(goal);
+        if (run.plan && run.plan.items.length) {
+          var progress = document.createElement('p'); progress.className = 'task-note';
+          progress.textContent = run.plan.items.filter(function (item) { return item.status === 'completed'; }).length + ' / ' + run.plan.items.length + (english ? ' steps marked complete by Agent' : ' 步骤由 Agent 标记完成'); card.appendChild(progress);
+          var list = document.createElement('ol'); list.className = 'task-plan';
+          run.plan.items.forEach(function (item) {
+            var row = document.createElement('li'); var mark = document.createElement('span');
+            mark.textContent = item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '◐' : '○';
+            var label = (english ? { completed: 'Completed', in_progress: 'In progress', pending: 'Pending' } : { completed: '已完成', in_progress: '进行中', pending: '待处理' })[item.status];
+            mark.setAttribute('aria-label', label); var content = document.createElement('span');
+            content.textContent = item.status === 'in_progress' && run.status === 'running' && item.activeForm ? item.activeForm : item.content;
+            row.appendChild(mark); row.appendChild(content); list.appendChild(row);
+          }); card.appendChild(list);
+        }
+        if (run.operations.length) {
+          var records = document.createElement('details'); records.className = 'task-records'; records.open = Boolean(expanded);
+          var summary = document.createElement('summary');
+          var files = run.operations.filter(function (item) { return item.evidence && item.evidence.kind === 'file' && item.evidence.status === 'succeeded'; });
+          var paths = files.map(function (item) { return item.evidence.path; }).filter(function (path, index, all) { return path && all.indexOf(path) === index; });
+          summary.textContent = run.operations.length + (english ? ' tool operations' : ' 项工具操作') + (paths.length ? ' · ' + paths.length + (english ? ' recorded file changes' : ' 个已记录的文件改动') : '');
+          records.appendChild(summary);
+          run.operations.forEach(function (item) {
+            var row = document.createElement('div'); row.className = 'task-operation';
+            var name = document.createElement('strong'); name.textContent = item.tool + ' · ' + taskStatus(item.status); row.appendChild(name);
+            var detail = item.evidence && (item.evidence.path || item.evidence.command) || item.detail;
+            if (detail) { var path = document.createElement('code'); path.textContent = detail; row.appendChild(path); }
+            if (item.evidence && item.evidence.kind === 'file' && item.evidence.status === 'succeeded' && item.evidence.path) row.appendChild(outputCopyButton(english ? 'Copy file path' : '复制文件路径', item.evidence.path));
+            if (item.evidence && item.evidence.kind === 'command') {
+              var exit = document.createElement('p'); exit.textContent = item.evidence.exitCode !== null ? (english ? 'Exit code: ' : '退出码：') + item.evidence.exitCode : (english ? 'No confirmed exit code.' : '尚无可确认的退出码。'); row.appendChild(exit);
+            }
+            if (item.preview) { var preview = document.createElement('p'); preview.textContent = item.preview; row.appendChild(preview); }
+            if (item.truncated || item.evidence && item.evidence.truncated) { var short = document.createElement('p'); short.textContent = english ? 'Showing an excerpt.' : '仅显示部分内容。'; row.appendChild(short); }
+            records.appendChild(row);
+          }); card.appendChild(records);
+        }
+        var note = document.createElement('p'); note.className = 'task-note';
+        note.textContent = english ? 'Plan status comes from the Agent. Tool results do not by themselves confirm that your goal or all checks passed.' : '计划状态由 Agent 更新。工具执行结果不代表任务目标或全部检查均已通过。';
+        if (run.truncated || run.plan && run.plan.truncated) note.textContent += english ? ' Only recent records are shown.' : ' 当前仅保留部分最近记录。';
+        card.appendChild(note);
+        return card;
+      }
+
+      function renderTaskSummary() {
+        var previous = document.getElementById('taskSummary');
+        var wasOpen = previous && $('details', previous) && $('details', previous).open;
+        if (previous) previous.remove();
+        var session = activeSession(); var runs = session && session.taskRuns || [];
+        if (!runs.length || !runs[runs.length - 1].plan && !runs[runs.length - 1].operations.length) return;
+        var card = taskSummaryCard(runs[runs.length - 1], wasOpen);
+        card.id = 'taskSummary'; $('#conversationInner').appendChild(card);
+      }
+
       function renderActivity() {
         var session = activeSession();
         var events = session ? session.events || [] : [];
         var host = $('#eventLog');
         host.textContent = '';
+        if (session && session.taskRunsTruncated) {
+          var retained = document.createElement('p'); retained.className = 'activity-empty'; retained.textContent = english ? 'Showing the 12 most recent task summaries. Saved conversation messages are retained.' : '显示最近 12 次任务摘要，已保存的对话正文仍然保留。'; host.appendChild(retained);
+        }
+        (session && session.taskRuns || []).slice().reverse().forEach(function (run) { host.appendChild(taskSummaryCard(run, false)); });
         $('#eventEmpty').hidden = events.length > 0;
         events.forEach(function (event) {
           var item = document.createElement('div');
@@ -2362,7 +2556,7 @@
           syncControls();
           $('#modelEffortPopover').hidden = false;
           $('#modelEffortButton').setAttribute('aria-expanded', 'true');
-          $('#modelSelect').focus();
+          focusModelOption();
         } catch (error) {
           if (ownerEpoch === state.storageEpoch && session === activeSession()) showToast(safeText(error && error.message || error));
         }
@@ -2371,23 +2565,63 @@
       function fillModels(models) {
         var select = $('#modelSelect');
         var current = currentModel() || 'default';
+        models = Array.isArray(models) ? models.filter(function (model, index, all) { return typeof model === 'string' && model && all.indexOf(model) === index; }) : [];
         var available = Boolean(state.status && state.status.available && models.length);
         var values = models.slice();
+        var locked = Boolean(state.nativeSessionId || state.turnActive || state.starting || state.pendingSend || browsingHistory() || state.switchingConversation || !state.storageReady);
+        var ownerEpoch = state.storageEpoch, ownerSessionId = state.activeSessionId;
+        var key = JSON.stringify([values, current, available, locked, ownerEpoch, ownerSessionId, state.status && state.status.defaultModel]);
+        if (select._optionsKey === key) return;
+        select._optionsKey = key;
+        var focusedValue = document.activeElement && document.activeElement.className === 'model-option' ? document.activeElement.value : null;
         // Refreshing an expired authorization must never rewrite a saved choice.
         // "default" remains a choice; native startup resolves it on an actual send.
         if (values.indexOf(current) < 0) values.unshift(current);
         select.textContent = '';
         values.forEach(function (model) {
-          var option = document.createElement('option');
+          var option = document.createElement('button');
+          option.type = 'button'; option.className = 'model-option';
           option.value = model;
           var missing = available && model === current && model !== 'default' && models.indexOf(model) < 0;
-          option.disabled = missing;
+          option.disabled = missing || !available || locked;
+          option.setAttribute('role', 'option');
+          option.setAttribute('aria-selected', String(model === current));
+          option.setAttribute('aria-disabled', String(option.disabled));
+          option.tabIndex = !option.disabled && (model === current || unavailableSelectedModel() && model === models[0]) ? 0 : -1;
           option.textContent = modelLabel(model) + (missing ? (english ? ' — unavailable, choose another' : ' — 不可用，请重新选择') : '');
           if (model === 'default' && available && state.status.defaultModel) option.textContent += ' · ' + modelLabel(state.status.defaultModel);
+          option.addEventListener('click', function () {
+            if (ownerEpoch !== state.storageEpoch || ownerSessionId !== state.activeSessionId || option.disabled) return;
+            setModel(model);
+            focusModelOption();
+          });
           select.appendChild(option);
+          if (focusedValue === model && !option.disabled) option.focus();
         });
         select.value = current;
         select.title = unavailableSelectedModel() ? (english ? 'Your previous model is no longer available. Choose a model to continue; your draft is saved.' : '原模型已不可用，请选择模型继续；草稿已保留。') : '';
+        var note = $('#modelAvailabilityNote');
+        note.textContent = !available ? (english ? 'Sign in to load available models. Your choice is kept.' : '登录后加载可用模型，原选择已保留。') : models.length === 1 ? (english ? 'Your account currently has one available model.' : '当前账号仅授权了这一个模型。') : (english ? models.length + ' models available for your account.' : '当前账号可用 ' + models.length + ' 个模型。');
+      }
+
+      function focusModelOption() {
+        var items = $$('#modelSelect .model-option').filter(function (node) { return !node.disabled; });
+        var selected = items.find(function (node) { return node.value === currentModel(); });
+        (selected || items[0] || $('#modelSelect')).focus();
+      }
+
+      function onModelKeydown(event) {
+        if (event.key === 'Escape') {
+          event.preventDefault(); event.stopPropagation(); closeControlPopovers(); $('#modelEffortButton').focus(); return;
+        }
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End'].indexOf(event.key) < 0) return;
+        var items = $$('#modelSelect .model-option').filter(function (node) { return !node.disabled; });
+        if (!items.length) return;
+        event.preventDefault();
+        var current = items.indexOf(document.activeElement);
+        var next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items.forEach(function (node, index) { node.tabIndex = index === next ? 0 : -1; });
+        items[next].focus();
       }
 
       function renderAttachments() {
@@ -2431,9 +2665,10 @@
         $('#addContext').disabled = !projectReady || !runtimeReady || busy;
         $('#permissionButton').disabled = !projectReady || locked || busy;
         $('#modelEffortButton').disabled = !projectReady || locked || busy;
-        $('#modelSelect').disabled = locked || busy;
         var effortSupported = Boolean(state.status && state.status.capabilities && state.status.capabilities.effort);
-        $('#effortRange').disabled = locked || busy || !effortSupported;
+        $('#effortField').hidden = !effortSupported;
+        $('#effortNote').hidden = !effortSupported;
+        $('#effortRange').disabled = !projectReady || locked || busy || !effortSupported;
         $('#effortRange').title = effortSupported ? '' : (english ? 'This gateway does not advertise thinking-depth support.' : '当前网关未声明支持思考深度。');
         $('#voiceButton').disabled = !projectReady || !runtimeReady || !SpeechRecognition || busy;
         $('#voiceButton').title = !SpeechRecognition ? tr('当前系统不支持语音输入') : tr('语音输入');
@@ -2444,12 +2679,12 @@
         $('#send').classList.toggle('stop-state', state.turnActive);
 
         $('#sessionHeading').textContent = session ? session.name : tr('新对话');
-        $('#sessionMeta').textContent = project ? (ui.narrow ? project.name : friendlyPath(project.path)) : '';
+        $('#sessionMeta').textContent = project ? project.name : '';
         $('#sessionMeta').title = project ? friendlyPath(project.path) : '';
         $('#projectButton').textContent = project ? project.name : tr('选择项目');
         $('#permissionLabel').textContent = permissionLabel(currentPermission());
         $('#modelEffortLabel').textContent = modelLabel(currentModel()) + (effortSupported ? ' · ' + effortLabel(currentEffort()) : '');
-        $('#modelSelect').value = currentModel();
+        fillModels(state.status && state.status.allowedModels || []);
         $('#effortRange').value = String(Math.max(0, EFFORT_LEVELS.indexOf(currentEffort())));
         $('#effortValue').textContent = effortLabel(currentEffort());
         $('#voiceLabel').textContent = tr(state.voiceActive ? '正在聆听' : '语音');
@@ -2773,6 +3008,8 @@
       function setModel(value) {
         var session = activeSession();
         if (state.nativeSessionId) return showToast('会话运行后请新建对话再切换模型、思考深度或权限。');
+        if (recoveryInteractionBlocked() || !state.status || !state.status.available) return;
+        if (value !== 'default' && (!Array.isArray(state.status.allowedModels) || state.status.allowedModels.indexOf(value) < 0)) return;
         if (session) { session.model = value; save(); }
         else state.draftModel = value;
         syncControls();
@@ -2780,6 +3017,7 @@
 
       function setEffort(value) {
         if (EFFORT_LEVELS.indexOf(value) < 0) return;
+        if (recoveryInteractionBlocked() || !state.status || !state.status.available || !state.status.capabilities || !state.status.capabilities.effort) return;
         var session = activeSession();
         if (state.nativeSessionId) return showToast('会话运行后请新建对话再切换模型、思考深度或权限。');
         if (session) { session.effort = value; save(); }
@@ -3081,7 +3319,9 @@
           state.turnActive = true;
           session.nativeHistoryInitialized = true;
           delete session.textContinuation;
+          ClaritideTaskRuns.start(session, uid('run'), value, Date.now());
           save();
+          renderTaskSummary();
           appendRunIndicator('正在处理任务');
           syncControls();
           recordEvent('task_started', { message: value }, Date.now(), session);
@@ -3138,6 +3378,7 @@
         var session = runningSession();
         if (!session) return;
         var visible = viewingRunningSession();
+        var taskChanged = ClaritideTaskRuns.update(session, event.type, payload, event.timestampMs || Date.now());
 
         if (event.type === 'approval_requested') {
           state.pendingApprovals[payload.requestId] = payload;
@@ -3214,6 +3455,7 @@
         if (event.type !== 'text_delta' && event.type !== 'assistant_final') {
           recordEvent(event.type, payload, event.timestampMs || Date.now(), session);
         }
+        if (visible && taskChanged) renderTaskSummary();
         syncControls();
         if (visible) scrollConversation();
       }
@@ -3335,7 +3577,7 @@
         $$('[data-permission]').forEach(function (button) {
           button.addEventListener('click', function () { setPermission(button.getAttribute('data-permission')); });
         });
-        $('#modelSelect').addEventListener('change', function (event) { setModel(event.target.value); });
+        $('#modelSelect').addEventListener('keydown', onModelKeydown);
         $('#effortRange').addEventListener('input', function (event) { setEffort(EFFORT_LEVELS[Number(event.target.value)]); });
         $('#addContext').addEventListener('click', function () { $('#fileInput').click(); });
         $('#fileInput').addEventListener('change', function (event) { void addFiles(Array.prototype.slice.call(event.target.files || [])); });
