@@ -69,7 +69,7 @@ function harness(options = {}) {
     save = function () { saved.push(currentEffort()); }; 
     window.testApi = { state, activeSession, send, stop, selectProject, selectSession, continueViewedSession, returnToRunningSession,
       handleEvent, runningSession, browsingHistory, historyProjects, syncControls, renderConversation, resetRunningView,
-      bind, setEffort, allowedEffortLevels, requestEffort, unavailableSelectedEffort, beginEffortGesture, onEffortInput, toggleControlPopover, errorSummary };
+      bind, newConversation, setEffort, allowedEffortLevels, requestEffort, unavailableSelectedEffort, beginEffortGesture, onEffortInput, toggleControlPopover, errorSummary };
   `), context);
   const api = context.window.testApi;
   const session = (id, time) => ({ id, name: id, model: 'gpt-test', effort: 'high', permission: 'controlled', messages: [], events: [], updatedAt: time });
@@ -205,9 +205,178 @@ test('a depth revoked during native start cannot send and leaves the accepted ch
   assert.ok(release); h.state.status.allowedEfforts = ['low', 'high']; release({ model: 'gpt-test' }); await sending;
   assert.deepEqual(h.calls.map(([kind]) => kind), ['start']); assert.ok(h.state.nativeSessionId);
   assert.equal(h.prompt.value, 'Keep this draft'); assert.equal(h.a.effort, 'max');
-  assert.match(h.element('#effortNote').textContent, /settings are locked.*new chat/);
+  assert.match(h.element('#effortNote').textContent, /reconnect this chat.*history and your draft will be retained/);
+  assert.equal(h.element('#useAvailableEffort').disabled, false);
+});
+
+test('a native configuration change restarts the same chat when reasoning selection is enabled or disabled', async () => {
+  for (const enabled of [false, true]) {
+    let closed = false;
+    const h = harness({ close: async () => { closed = true; }, listSessions: async () => closed ? [] : [{ sessionId: 'runtime-a', phase: 'running', permission: 'controlled', model: 'gpt-test', effort: 'high', workspaceId: 'workspace-a', configurationCurrent: false }] });
+    h.a.runtimeSessionId = 'runtime-a'; h.state.nativeSessionId = 'runtime-a';
+    h.state.status.capabilities.effort = enabled;
+    h.state.status.allowedEfforts = enabled ? ['low', 'high'] : [];
+    h.prompt.value = 'Continue with the current service configuration'; await h.send();
+    assert.deepEqual(h.calls.map(([kind]) => kind), ['close', 'start', 'send']);
+    const started = h.calls.find(([kind]) => kind === 'start')[1];
+    assert.equal(started.clientSessionId, 'runtime-a'); assert.equal(started.resume, true);
+    assert.equal(started.effort, enabled ? 'high' : undefined);
+    assert.equal(h.a.runtimeSessionId, 'runtime-a');
+  }
+});
+
+test('a current native configuration is reused without restarting the chat', async () => {
+  const h = harness({ listSessions: async () => [{ sessionId: 'runtime-a', phase: 'running', permission: 'controlled', model: 'gpt-test', effort: 'high', workspaceId: 'workspace-a', configurationCurrent: true }] });
+  h.a.runtimeSessionId = 'runtime-a'; h.state.nativeSessionId = 'runtime-a';
+  h.prompt.value = 'Continue'; await h.send();
+  assert.deepEqual(h.calls.map(([kind]) => kind), ['send']);
+});
+
+test('explicit recovery of a revoked depth closes an idle child and resumes the same chat with its history and draft', async () => {
+  const h = harness();
+  h.a.runtimeSessionId = 'runtime-a'; h.a.effort = 'max'; h.a.nativeHistoryInitialized = true;
+  h.a.messages.push({ role: 'user', text: 'Previous request', time: 1 });
+  h.state.nativeSessionId = 'runtime-a'; h.state.status.allowedEfforts = ['low', 'high'];
+  h.prompt.value = 'Continue my existing work'; h.syncControls();
+  const recover = h.element('#useAvailableEffort');
+  assert.equal(recover.disabled, false); assert.match(recover.textContent, /continue this chat/);
+  await recover.onclick();
+  assert.deepEqual(h.calls.map(([kind]) => kind), ['close']);
+  assert.equal(h.a.effort, 'high'); assert.equal(h.a.runtimeSessionId, 'runtime-a');
+  assert.equal(h.a.messages[0].text, 'Previous request'); assert.equal(h.a.nativeHistoryInitialized, true);
+  assert.equal(h.prompt.value, 'Continue my existing work'); assert.equal(h.state.activeSessionId, 'chat-a');
+  await h.send();
+  const started = h.calls.find(([kind]) => kind === 'start')[1];
+  assert.equal(started.clientSessionId, 'runtime-a'); assert.equal(started.resume, true); assert.equal(started.effort, 'high');
+  assert.equal(h.calls.find(([kind]) => kind === 'send')[1].content, 'Continue my existing work');
+});
+
+test('depth recovery blocks parallel sending and switching until the idle child is closed', async () => {
+  let release;
+  const h = harness({ close: () => new Promise(resolve => { release = resolve; }) });
+  h.a.runtimeSessionId = 'runtime-a'; h.a.effort = 'max'; h.state.nativeSessionId = 'runtime-a';
+  h.state.status.allowedEfforts = ['low']; h.prompt.value = 'Retain this draft'; h.syncControls();
+  const recovering = h.element('#useAvailableEffort').onclick();
+  for (let attempt = 0; attempt < 12 && !release; attempt += 1) await Promise.resolve();
+  assert.ok(release); assert.equal(h.state.switchingConversation, true);
+  assert.equal(h.element('#useAvailableEffort').disabled, true);
+  await h.send(); h.selectSession('project-a', 'chat-b'); h.newConversation();
+  assert.equal(h.state.activeSessionId, 'chat-a'); assert.deepEqual(h.calls.map(([kind]) => kind), ['close']);
+  release(); await recovering;
+  assert.equal(h.state.switchingConversation, false); assert.equal(h.a.effort, 'low'); assert.equal(h.prompt.value, 'Retain this draft');
+});
+
+test('a failed idle child close keeps the saved depth and allows explicit recovery to retry', async () => {
+  let fail = true, closed = false;
+  const h = harness({ listSessions: async () => closed ? [] : [{ sessionId: 'runtime-a', phase: 'running', hasAcceptedInput: false }], close: async () => { if (fail) throw new Error('Unable to close the idle child'); closed = true; } });
+  h.a.runtimeSessionId = 'runtime-a'; h.a.effort = 'max'; h.state.nativeSessionId = 'runtime-a';
+  h.state.status.allowedEfforts = ['low']; h.prompt.value = 'Keep this draft'; h.syncControls();
+  await h.element('#useAvailableEffort').onclick();
+  assert.equal(h.a.effort, 'max'); assert.equal(h.a.runtimeSessionId, 'runtime-a'); assert.equal(h.prompt.value, 'Keep this draft');
+  assert.equal(h.state.switchingConversation, false); assert.equal(h.state.closingSessionId, 'runtime-a');
+  assert.match(h.toasts.at(-1), /Unable to close/); assert.equal(h.saved.length, 0);
+  fail = false; await h.element('#useAvailableEffort').onclick();
+  assert.equal(h.a.effort, 'low'); assert.equal(h.calls.filter(([kind]) => kind === 'close').length, 2);
+});
+
+test('account, project, chat, or capability changes while closing cannot apply the captured recovery choice', async () => {
+  for (const change of ['account', 'project', 'chat', 'capabilities']) {
+    let release, closed = false;
+    const h = harness({ listSessions: async () => closed ? [] : [{ sessionId: 'runtime-a', phase: 'running', hasAcceptedInput: false }], close: () => new Promise(resolve => { release = () => { closed = true; resolve(); }; }) });
+    h.a.runtimeSessionId = 'runtime-a'; h.a.effort = 'max'; h.state.nativeSessionId = 'runtime-a';
+    h.state.status.allowedEfforts = ['low', 'high']; h.syncControls();
+    const recovering = h.element('#useAvailableEffort').onclick();
+    for (let attempt = 0; attempt < 12 && !release; attempt += 1) await Promise.resolve();
+    assert.ok(release);
+    if (change === 'account') h.state.storageEpoch += 1;
+    if (change === 'project') { h.state.activeProjectId = 'project-b'; h.state.activeSessionId = 'chat-c'; }
+    if (change === 'chat') h.state.activeSessionId = 'chat-b';
+    if (change === 'capabilities') h.state.status.allowedEfforts = ['low'];
+    release(); await recovering;
+    assert.equal(h.a.effort, 'max'); assert.equal(h.b.effort, 'high'); assert.equal(h.c.effort, 'high');
+    assert.equal(h.a.runtimeSessionId, 'runtime-a'); assert.equal(h.saved.length, 0);
+    assert.deepEqual(h.calls.map(([kind]) => kind), ['close']);
+  }
+});
+
+test('configuration recovery starts fresh only when native confirms no input was accepted', async () => {
+  for (const accepted of [false, true, undefined]) {
+    let closed = false;
+    const h = harness({ close: async () => { closed = true; }, listSessions: async () => closed ? [] : [{ sessionId: 'runtime-a', phase: 'running', permission: 'controlled', model: 'gpt-test', effort: 'high', workspaceId: 'workspace-a', configurationCurrent: false, hasAcceptedInput: accepted }] });
+    h.a.runtimeSessionId = 'runtime-a'; h.a.nativeHistoryInitialized = false;
+    h.state.nativeSessionId = 'runtime-a'; h.prompt.value = 'Retry my first request';
+    await h.send();
+    const started = h.calls.find(([kind]) => kind === 'start')[1];
+    assert.equal(started.resume, accepted !== false);
+    if (accepted === false) assert.notEqual(started.clientSessionId, 'runtime-a');
+    else assert.equal(started.clientSessionId, 'runtime-a', 'a missing UI acknowledgement must never discard potentially accepted history');
+    assert.equal(h.state.activeSessionId, 'chat-a'); assert.equal(h.a.runtimeSessionId, started.clientSessionId);
+  }
+});
+
+test('failed or stopped runtimes with no accepted input restart fresh only after confirmed process exit', async () => {
+  for (const phase of ['failed', 'stopped']) {
+    for (const reaped of [false, true]) {
+      let closed = false;
+      const h = harness({ close: async () => { closed = true; }, listSessions: async () => [{ sessionId: 'runtime-a', phase, reaped: closed || reaped, hasAcceptedInput: false }] });
+      h.a.runtimeSessionId = 'runtime-a'; h.a.messages.push({ role: 'user', text: 'Saved web history', time: 1 });
+      h.prompt.value = 'Retry an empty failed runtime'; await h.send();
+      const started = h.calls.find(([kind]) => kind === 'start')[1];
+      assert.notEqual(started.clientSessionId, 'runtime-a'); assert.equal(started.resume, false);
+      assert.equal(h.calls.filter(([kind]) => kind === 'close').length, reaped ? 0 : 1);
+      assert.equal(h.a.messages[0].text, 'Saved web history'); assert.equal(h.state.activeSessionId, 'chat-a');
+    }
+  }
+});
+
+test('a revoked depth before the first accepted input recovers with a fresh runtime and retains the web chat', async () => {
+  let release, record = null, starts = 0;
+  const h = harness({
+    listSessions: async () => record ? [record] : [],
+    close: async () => { record = null; },
+    start: request => {
+      record = { sessionId: request.clientSessionId, phase: 'running', permission: request.permission, model: request.model, effort: request.effort, workspaceId: request.workspace, hasAcceptedInput: false };
+      if (++starts === 1) return new Promise(resolve => { release = resolve; });
+      return { model: request.model };
+    },
+  });
+  h.a.effort = 'max'; h.a.messages.push({ role: 'user', text: 'Saved web context', time: 1 });
+  h.prompt.value = 'Keep my first runtime request'; const sending = h.send();
+  for (let attempt = 0; attempt < 12 && !release; attempt += 1) await Promise.resolve();
+  assert.ok(release); h.state.status.allowedEfforts = ['low', 'high']; release({ model: 'gpt-test' }); await sending;
+  const initialId = h.a.runtimeSessionId;
+  assert.ok(initialId); assert.equal(h.calls.filter(([kind]) => kind === 'send').length, 0);
+  await h.element('#useAvailableEffort').onclick();
+  assert.equal(h.a.runtimeSessionId, undefined); assert.equal(h.a.nativeHistoryInitialized, false);
+  assert.equal(h.a.messages[0].text, 'Saved web context'); assert.equal(h.prompt.value, 'Keep my first runtime request');
+  await h.send();
+  const restarted = h.calls.filter(([kind]) => kind === 'start')[1][1];
+  assert.notEqual(restarted.clientSessionId, initialId); assert.equal(restarted.resume, false); assert.equal(restarted.effort, 'high');
+  assert.equal(h.state.activeSessionId, 'chat-a'); assert.equal(h.a.runtimeSessionId, restarted.clientSessionId);
+  assert.match(h.calls.find(([kind]) => kind === 'send')[1].content, /Saved web context/);
+});
+
+test('explicit depth recovery retains potentially accepted native history even without a saved UI acknowledgement', async () => {
+  for (const accepted of [true, undefined]) {
+    let closed = false;
+    const h = harness({ close: async () => { closed = true; }, listSessions: async () => closed ? [] : [{ sessionId: 'runtime-a', phase: 'running', hasAcceptedInput: accepted }] });
+    h.a.runtimeSessionId = 'runtime-a'; h.a.nativeHistoryInitialized = false; h.a.effort = 'max';
+    h.state.nativeSessionId = 'runtime-a'; h.state.status.allowedEfforts = ['low']; h.prompt.value = 'Retry safely'; h.syncControls();
+    await h.element('#useAvailableEffort').onclick();
+    assert.equal(h.a.runtimeSessionId, 'runtime-a'); assert.equal(h.a.effort, 'low');
+    await h.send();
+    const started = h.calls.find(([kind]) => kind === 'start')[1];
+    assert.equal(started.clientSessionId, 'runtime-a'); assert.equal(started.resume, true);
+  }
 });
 
 test('native effort rejection is summarized clearly', () => {
   const h = harness(); assert.match(h.errorSummary('AI_EFFORT_UNAVAILABLE', 'Selected effort is not allowed'), /saved thinking depth is unavailable/);
+});
+
+test('updated native authorization asks for a retry with the current configuration instead of signing in again', () => {
+  const h = harness();
+  const summary = h.errorSummary('send_failed', 'AI_RUNTIME_CONFIGURATION_CHANGED: Authorization changed; retry with the current configuration');
+  assert.match(summary, /Retry to continue this chat with the latest configuration/);
+  assert.doesNotMatch(summary, /Sign in again/);
 });

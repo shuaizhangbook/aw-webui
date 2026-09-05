@@ -2136,6 +2136,7 @@
         if (code === 'session_mismatch' || /event for a different session/i.test(message)) return english
           ? 'The session could not be matched, so this run was stopped. Your chat is retained. Review the details below before retrying.'
           : '本次执行因会话标识不一致而停止。对话已保留，可查看下方详情后重试。';
+        if (/ai_runtime_configuration_changed/i.test(code + ' ' + message)) return english ? 'AI authorization or service settings have changed. Retry to continue this chat with the latest configuration; your draft is retained.' : 'AI 授权或服务设置已更新，请重试以使用最新配置继续此对话；草稿已保留。';
         if (/authoriz|expired|sign in/i.test(code + ' ' + message)) return english ? 'AI authorization is unavailable. Sign in again, then retry your saved request.' : 'AI 授权暂不可用，请重新登录后重试已保留的请求。';
         if (/model.*(?:unavailable|not allowed)|model_not_allowed/i.test(code + ' ' + message)) return english ? 'The selected model is unavailable. Choose an available model and retry.' : '当前模型不可用，请选择可用模型后重试。';
         if (/effort.*(?:unavailable|not allowed)|ai_effort_unavailable/i.test(code + ' ' + message)) return english ? 'The saved thinking depth is unavailable. Review the available levels before retrying; your draft is retained.' : '保存的思考深度已不可用，请查看可用档位后重试；草稿已保留。';
@@ -2570,7 +2571,7 @@
       function requestEffort() { return allowedEffortLevels().length ? currentEffort() : undefined; }
 
       function effortUnavailableMessage() {
-        return english ? 'Your saved thinking depth is no longer available. Open the model menu to choose an available level; your draft is retained.' : '保存的思考深度已不可用，请打开模型菜单选择可用档位；草稿已保留。';
+        return english ? 'Your saved thinking depth is no longer available. Open the model menu and confirm an available level to continue this chat; your draft is retained.' : '保存的思考深度已不可用，请打开模型菜单确认可用档位后继续此对话；草稿已保留。';
       }
 
       function effortOwner() {
@@ -2585,6 +2586,7 @@
         var levels = allowedEffortLevels();
         var unavailable = levels.length > 0 && levels.indexOf(currentEffort()) < 0;
         var editable = projectReady && runtimeReady && !locked && !busy;
+        var recoverable = projectReady && runtimeReady && !busy;
         var range = $('#effortRange');
         var owner = effortOwner();
         range._effortOwner = owner;
@@ -2604,16 +2606,17 @@
         else if (unavailable) notes.push(effortUnavailableMessage());
         else if (levels.length === 1) notes.push(english ? 'The service currently offers only this fixed level.' : '当前服务仅开放这一档，无需拖动。');
         else if (editable) notes.push(english ? 'Drag to choose an available level. Deeper thinking may take longer.' : '拖动选择服务开放的档位，更深入的思考可能需要更长时间。');
-        if (locked || busy) notes.push(english ? 'This chat’s settings are locked. Start a new chat to change the model or thinking depth.' : '本对话设置已锁定，请新建对话调整模型或思考深度。');
+        if (locked && unavailable && recoverable) notes.push(english ? 'Confirm an available level below to reconnect this chat. Its history and your draft will be retained.' : '确认下方可用档位后将重新连接此对话，保留历史和草稿。');
+        else if (locked || busy) notes.push(english ? 'This chat’s settings are locked. Start a new chat to change the model or thinking depth.' : '本对话设置已锁定，请新建对话调整模型或思考深度。');
         $('#effortNote').hidden = false;
         $('#effortNote').textContent = notes.join(' ');
         range.title = !editable || unavailable ? notes.join(' ') : '';
         var replacement = levels.indexOf('high') >= 0 ? 'high' : levels[0];
         var recover = $('#useAvailableEffort');
         recover.hidden = !unavailable;
-        recover.disabled = !editable;
-        recover.textContent = replacement ? (english ? 'Use ' + effortLabel(replacement) : '使用“' + effortLabel(replacement) + '”档位') : '';
-        recover.onclick = function () { if (!recover.disabled && currentEffortOwner(owner)) setEffort(replacement, owner); };
+        recover.disabled = !recoverable;
+        recover.textContent = replacement ? (english ? 'Use ' + effortLabel(replacement) + ' and continue this chat' : '使用“' + effortLabel(replacement) + '”档位并继续此对话') : '';
+        recover.onclick = function () { if (!recover.disabled && currentEffortOwner(owner)) return recoverEffort(replacement, owner); };
       }
 
       function beginEffortGesture() { $('#effortRange')._effortGesture = $('#effortRange')._effortOwner; }
@@ -2867,6 +2870,7 @@
 
       function newConversation() {
         if (!state.storageReady) { updateHistoryNotice(); return; }
+        if (state.switchingConversation) return showToast(english ? 'Wait for this chat to reconnect.' : '请等待当前对话重新连接。');
         if (!activeProject()) {
           openProjectModal();
           return;
@@ -3114,6 +3118,42 @@
         syncControls();
       }
 
+      function forgetUnsentNativeSession(session, summary) {
+        // Only native acknowledgement proves that no input reached this child.
+        // A missing UI acknowledgement cannot establish that history is absent.
+        if (!session || !summary || summary.sessionId !== session.runtimeSessionId || summary.hasAcceptedInput !== false) return false;
+        delete session.runtimeSessionId;
+        session.nativeHistoryInitialized = false;
+        return true;
+      }
+
+      async function recoverEffort(value, owner) {
+        if (!currentEffortOwner(owner) || allowedEffortLevels().indexOf(value) < 0 || !unavailableSelectedEffort()) return;
+        if (!activeProject() || !state.accountScope || recoveryInteractionBlocked() || !state.status || !state.status.available) return;
+        var session = activeSession();
+        state.switchingConversation = true;
+        syncControls();
+        try {
+          // Only this explicit recovery action may close an idle child to change
+          // its launch settings. Retain history unless native confirms no input.
+          var closingId = state.nativeSessionId || state.closingSessionId;
+          var summary;
+          if (closingId) {
+            summary = (await bridge.listSessions()).find(function (item) { return item.sessionId === closingId; });
+            if (!currentEffortOwner(owner) || closingId !== (state.nativeSessionId || state.closingSessionId)) return;
+            await closeNativeSession();
+          }
+          if (!currentEffortOwner(owner) || !state.storageReady || !state.status || !state.status.available) return;
+          forgetUnsentNativeSession(session, summary);
+          if (session) { session.effort = value; save(); }
+          else state.draftEffort = value;
+        } catch (error) {
+          if (currentEffortOwner(owner)) showToast(safeText(error && error.message || error));
+        } finally {
+          if (owner.epoch === state.storageEpoch) { state.switchingConversation = false; syncControls(); }
+        }
+      }
+
       function toolActivity(tool) {
         var value = safeText(tool).toLowerCase();
         if (/read/.test(value)) return tr('正在读取项目');
@@ -3194,10 +3234,10 @@
           requireOriginalWorkspace(project, workspace);
           workspaceValidated = true;
           var id = session.runtimeSessionId || crypto.randomUUID();
-          var existing = (await bridge.listSessions()).find(function (item) { return item.sessionId === id && item.phase === 'running' && item.reaped !== true; });
+          var existing = (await bridge.listSessions()).find(function (item) { return item.sessionId === id; });
           requireCurrentOwner();
-          if (existing) {
-            if (existing.permission === session.permission && existing.model === session.model && (requestEffort() === undefined || existing.effort === session.effort) && existing.workspaceId === workspace.id) {
+          if (existing && existing.reaped !== true) {
+            if (existing.phase === 'running' && existing.configurationCurrent !== false && existing.permission === session.permission && existing.model === session.model && (requestEffort() === undefined || existing.effort === session.effort) && existing.workspaceId === workspace.id) {
               project.nativeWorkspace = workspace;
               session.workspaceRecoveryNeeded = false;
               state.nativeSessionId = id; return id;
@@ -3206,9 +3246,13 @@
             // controls that now say Controlled or Read only.
             state.nativeSessionId = id;
             await closeNativeSession();
+            if (ownerIsCurrent() && forgetUnsentNativeSession(session, existing)) id = crypto.randomUUID();
+          } else if (existing && existing.reaped === true && forgetUnsentNativeSession(session, existing)) {
+            id = crypto.randomUUID();
           }
           requireCurrentOwner();
           state.nativeSessionId = '';
+          state.attemptingResume = Boolean(session.runtimeSessionId);
           var started = await bridge.startSession({
             clientSessionId: id,
             workspace: workspace.id,
