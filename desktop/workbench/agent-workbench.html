@@ -2140,6 +2140,20 @@
         return english ? 'This run could not continue. Your chat and request are retained; check the details before retrying.' : '本次执行未能继续，对话和请求已保留。请查看详情后重试。';
       }
 
+      function safeProtocolDiagnostics(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+        var result = {};
+        var labels = {
+          eventType: ['system', 'stream_event', 'assistant', 'user', 'result', 'control_request', 'control_response', 'control_cancel_request', 'absent', 'other'],
+          eventSubtype: ['init', 'success', 'error_during_execution', 'error_max_turns', 'error_max_budget_usd', 'error_max_structured_output_retries', 'absent', 'other'],
+          streamEventType: ['message_start', 'message_delta', 'message_stop', 'content_block_start', 'content_block_delta', 'content_block_stop', 'absent', 'other'],
+          startMode: ['fresh', 'resume'], sessionIdFormat: ['uuid', 'other']
+        };
+        Object.keys(labels).forEach(function (key) { if (labels[key].indexOf(value[key]) !== -1) result[key] = value[key]; });
+        ['initialized', 'turnActive', 'sessionIdMatchesExpected'].forEach(function (key) { if (typeof value[key] === 'boolean') result[key] = value[key]; });
+        return Object.keys(result).length ? result : null;
+      }
+
       function appendErrorCard(message, approvalUnsupported) {
         var errorSessionId = state.activeSessionId;
         var errorEpoch = state.storageEpoch;
@@ -2220,6 +2234,9 @@
         rawSummary.textContent = english ? 'Error details' : '错误详情';
         var raw = document.createElement('pre');
         raw.textContent = [errorCode, safeText(message)].filter(Boolean).join('\n');
+        var protocolDiagnostics = safeProtocolDiagnostics(savedError && savedError.diagnostics);
+        if (protocolDiagnostics) raw.textContent += '\n' + JSON.stringify(protocolDiagnostics, null, 2);
+        actions.appendChild(outputCopyButton(english ? 'Copy error details' : '复制错误详情', raw.textContent));
         rawDetails.appendChild(rawSummary); rawDetails.appendChild(raw); card.appendChild(rawDetails);
         card.appendChild(actions);
         $('#conversationInner').appendChild(card);
@@ -3430,6 +3447,8 @@
         } else if (event.type === 'error') {
           var approvalUnsupported = payload.code === 'tool_approval_unsupported';
           session.lastError = { code: payload.code, message: safeText(payload.message || payload.code), time: Date.now() };
+          var protocolDiagnostics = safeProtocolDiagnostics(payload.diagnostics);
+          if (protocolDiagnostics) session.lastError.diagnostics = protocolDiagnostics;
           if (payload.terminal === true || approvalUnsupported) session.lastFailedRequest = session.lastRequest || null;
           save();
           if (payload.code === 'interrupt_failed') showToast(payload.message || (english ? 'Failed to stop. Please retry.' : '停止失败，请重试。'));

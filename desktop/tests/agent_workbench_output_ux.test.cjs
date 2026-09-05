@@ -193,7 +193,7 @@ test('stale model options cannot change another account and expired authorizatio
   h.setModel('gpt-two'); assert.equal(h.session.model, 'gpt-one');
 });
 
-test('session mismatch shows a Chinese summary with exact native details folded and retained', () => {
+test('session mismatch shows a Chinese summary and retains only safe copyable diagnostics', async () => {
   const h = harness({ locale: 'zh-CN' });
   const raw = 'The agent runtime emitted an event for a different session';
   h.session.lastError = { code: 'session_mismatch', message: raw };
@@ -203,6 +203,19 @@ test('session mismatch shows a Chinese summary with exact native details folded 
   assert.doesNotMatch(card.querySelector('.card-copy').textContent, /The agent runtime|已修复/);
   const details = card.querySelector('details'); assert.ok(!details.open);
   assert.equal(details.querySelector('pre').textContent, 'session_mismatch\n' + raw);
+  h.host.textContent = '';
+  h.handleEvent({ sessionId: 'native', type: 'error', payload: { code: 'session_mismatch', message: raw, terminal: true, diagnostics: {
+    eventType: 'stream_event', streamEventType: 'message_start', startMode: 'resume', initialized: false,
+    turnActive: true, sessionIdMatchesExpected: false, sessionIdFormat: 'uuid',
+    sessionId: 'private-id', token: 'private-token', eventSubtype: 'private-subtype'
+  } } });
+  const diagnosticCard = h.host.querySelector('.error-card');
+  const diagnosticText = diagnosticCard.querySelector('pre').textContent;
+  assert.match(diagnosticText, /"startMode": "resume"/);
+  assert.doesNotMatch(diagnosticText, /private-/);
+  assert.doesNotMatch(JSON.stringify(h.session.lastError), /private-/);
+  await diagnosticCard.querySelectorAll('button').find(button => button.textContent === '复制错误详情').click();
+  assert.equal(h.copied.at(-1), diagnosticText);
 });
 
 test('tool evidence is rendered inertly, persisted on its owner, and cannot be routed into the viewed chat', () => {
