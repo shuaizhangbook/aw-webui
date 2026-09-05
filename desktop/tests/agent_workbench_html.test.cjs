@@ -94,9 +94,9 @@ test('projects and chats are automatic, manageable, and safe to remove', () => {
 test('model and effort share one control and pass a validated session effort', () => {
   assert.match(html, /id="modelEffortButton"/);
   assert.match(html, /id="modelEffortPopover"/);
-  assert.match(html, /id="effortRange"[^>]+min="0"[^>]+max="4"/);
+  assert.match(html, /id="effortRange"[^>]+aria-describedby="effortNote"/);
   assert.match(html, /var EFFORT_LEVELS = \['low', 'medium', 'high', 'xhigh', 'max'\]/);
-  assert.match(html, /effort: session\.effort/);
+  assert.match(html, /effort: requestEffort\(\)/);
   assert.match(html, /model: session\.model/);
 });
 

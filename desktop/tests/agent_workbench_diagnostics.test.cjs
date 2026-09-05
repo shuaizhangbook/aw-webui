@@ -12,6 +12,7 @@ test('local diagnostics include the installed build without account, prompt, cre
   vm.runInNewContext(source, context);
   const text = context.diagnosticsText({
     available: true, accountScope: 'acct_secret', token: 'private-token', lastError: '/Users/private/file',
+    capabilities: { effort: true }, allowedEfforts: ['max', 'low', 'low', 'private-token', '/Users/private/file', 'high\nsecret', { secret: 'private' }],
     messages: ['private prompt'], buildInfo: {
       appVersion: '0.2.2', buildNumber: '34', productRevision: 'a'.repeat(40),
       webuiRevision: 'b'.repeat(40), platform: 'windows-x86_64', runId: '33954233073',
@@ -21,6 +22,8 @@ test('local diagnostics include the installed build without account, prompt, cre
   assert.match(text, /appVersion: 0\.2\.2/);
   assert.match(text, /buildNumber: 34/);
   assert.match(text, /runtimeAvailable: true/);
+  assert.match(text, /effortAdvertised: true/);
+  assert.match(text, /allowedEfforts: low, max/);
   assert.doesNotMatch(text, /private|secret|prompt|workflow|engineRevision/);
 });
 
