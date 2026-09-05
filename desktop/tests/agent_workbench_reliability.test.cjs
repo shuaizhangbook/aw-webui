@@ -52,17 +52,20 @@ function harness(overrides = {}) {
   const api = context.window.testApi;
   const session = { id: 'chat', model: 'gpt-test', effort: 'high', permission: 'controlled', messages: [], events: [] };
   api.state.projects = [{ id: 'project', name: 'Project', path: '/project', nativeWorkspace: { id: 'workspace', path: '/project' }, sessions: [session] }];
+  api.state.storageReady = true; api.state.accountScope = 'acct_test'; api.state.storageEpoch = 1;
+  api.state.runningProjectId = 'project'; api.state.runningSessionId = 'chat'; api.state.runStorageEpoch = 1;
   api.state.activeProjectId = 'project'; api.state.activeSessionId = 'chat';
   api.state.status = { available: true, allowedModels: ['gpt-test'], defaultModel: 'gpt-test', maxMessageBytes: 65536 };
   return { ...api, session, calls, toasts, prompt: document.querySelector('#prompt'), modelSelect: document.querySelector('#modelSelect'), setSessions(value) { sessions = value; } };
 }
 
-test('an old default model is replaced by the authorized server default', () => {
+test('the default choice is preserved until native startup resolves it', () => {
   const h = harness(); h.session.model = 'default';
   h.state.status.defaultModel = 'gpt-other';
   h.fillModels(['gpt-test', 'gpt-other']);
-  assert.deepEqual(h.modelSelect.children.map(option => option.value), ['gpt-test', 'gpt-other']);
-  assert.equal(h.session.model, 'gpt-other');
+  assert.deepEqual(h.modelSelect.children.map(option => option.value), ['default', 'gpt-test', 'gpt-other']);
+  assert.equal(h.session.model, 'default');
+  assert.match(h.modelSelect.children[0].textContent, /gpt-other|GPT-other/i);
 });
 
 test('UTF-8 message, attachments and legacy history are checked before starting CCB', async () => {

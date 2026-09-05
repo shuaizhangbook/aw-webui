@@ -106,6 +106,12 @@
     }
     .compact-action:hover { background: var(--active); color: var(--ink); }
     .empty-projects { margin: 6px 5px; padding: 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .history-search { width: calc(100% - 14px); margin: 0 7px 9px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; }
+    .history-empty { padding: 12px; color: var(--muted); font-size: 12px; }
+    .history-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+    .history-notice[hidden] { display: none; }
+    .history-notice span { flex: 1 1 180px; }
+    .session-row.is-running .session-title::before { content: '● '; color: #437456; }
     .project { margin-bottom: 4px; }
     .item-shell {
       position: relative;
@@ -151,6 +157,9 @@
     .menu-popover button { width: 100%; height: 33px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; text-align: left; font-size: 12px; }
     .menu-popover button:hover { background: var(--soft); }
     .menu-popover .danger { color: var(--red); }
+    .storage-notice { margin: 8px 5px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+    .storage-notice.warning { background: var(--amber-soft); color: var(--amber); }
+    .storage-notice button { margin-top: 5px; }
     .sidebar-foot { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
     .status-dot.ready { background: var(--mint); }
@@ -510,7 +519,15 @@
             <span class="sr-only" data-i18n="新建">新建</span>
           </button>
         </div>
+        <div class="storage-notice" id="storageNotice" role="status" aria-live="polite" hidden>
+          <div id="storageNoticeText"></div>
+          <button class="text-button" id="retryHistory" type="button" hidden>重试加载</button>
+          <button class="text-button" id="exportHistory" type="button" hidden>导出本账号记录</button>
+        </div>
+        <div class="storage-notice" id="legacyHistoryNotice" hidden></div>
+        <input class="history-search" id="historySearch" type="search" autocomplete="off" aria-label="搜索项目或对话" data-i18n-aria="搜索项目或对话" placeholder="搜索项目或对话" data-i18n-placeholder="搜索项目或对话">
         <div id="projectList"></div>
+        <p class="history-empty" id="historyEmpty" hidden data-i18n="没有找到匹配的对话">没有找到匹配的对话</p>
         <div class="empty-projects" id="projectEmpty" data-i18n="新建项目并选择本地文件夹，然后直接输入任务。">新建项目并选择本地文件夹，然后直接输入任务。</div>
       </div>
       <footer class="sidebar-foot">
@@ -534,6 +551,7 @@
           </summary>
           <div class="menu-popover">
             <button id="showActivity" type="button" data-i18n="运行详情">运行详情</button>
+            <button id="showDiagnostics" type="button" data-i18n="关于与诊断">关于与诊断</button>
             <button id="renameActiveSession" type="button" data-i18n="重命名对话">重命名对话</button>
             <button class="danger" id="deleteActiveSession" type="button" data-i18n="删除对话">删除对话</button>
           </div>
@@ -545,6 +563,11 @@
       </section>
 
       <div class="composer-wrap">
+        <div class="history-notice" id="historyNotice" role="status" hidden>
+          <span id="historyNoticeText"></span>
+          <button class="text-button" id="returnRunningSession" type="button"></button>
+          <button class="text-button" id="continueViewedSession" type="button" hidden data-i18n="在此对话继续">在此对话继续</button>
+        </div>
         <button class="back-to-latest" id="backToLatest" type="button" hidden data-i18n="回到最新">回到最新</button>
         <div class="composer">
           <textarea id="prompt" rows="2" aria-label="任务内容" data-i18n-aria="任务内容" placeholder="描述你想完成的任务" data-i18n-placeholder="描述你想完成的任务" disabled></textarea>
@@ -642,6 +665,20 @@
     </main>
   </div>
 
+  <div class="modal-backdrop" id="diagnosticsModal" role="dialog" aria-modal="true" aria-labelledby="diagnosticsTitle">
+    <section class="modal">
+      <header>
+        <h2 id="diagnosticsTitle" data-i18n="关于与诊断">关于与诊断</h2>
+        <button class="text-button" data-close="diagnosticsModal" type="button" data-i18n="关闭">关闭</button>
+      </header>
+      <div class="modal-body">
+        <p class="modal-copy" data-i18n="复制版本与运行状态，便于定位问题。内容不含账号、对话或本地路径。">复制版本与运行状态，便于定位问题。内容不含账号、对话或本地路径。</p>
+        <textarea id="diagnosticsText" readonly rows="11" style="width:100%;box-sizing:border-box;resize:vertical;font:12px/1.6 monospace" aria-label="诊断信息" data-i18n-aria="诊断信息"></textarea>
+      </div>
+      <footer><button class="btn primary" id="copyDiagnostics" type="button" data-i18n="复制诊断">复制诊断</button></footer>
+    </section>
+  </div>
+
   <div class="modal-backdrop" id="projectModal" role="dialog" aria-modal="true" aria-labelledby="projectTitle">
     <section class="modal">
       <header>
@@ -689,6 +726,140 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
+    // BEGIN CLARITIDE_ACCOUNT_HISTORY_STORE
+    // The native runtime supplies a verified account scope. Database names never
+    // contain credentials. Unknown legacy localStorage data is not imported.
+    function createAccountHistoryStore(indexedDB, scope) {
+      'use strict';
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(scope || '')) return Promise.reject(new Error('HISTORY_ACCOUNT_REQUIRED'));
+      if (!indexedDB) return Promise.reject(new Error('HISTORY_STORAGE_UNAVAILABLE'));
+      return new Promise(function (resolve, reject) {
+        var settled = false;
+        var request;
+        var timer = setTimeout(function () { fail(new Error('HISTORY_OPEN_TIMEOUT')); }, 5000);
+        function fail(error) { if (!settled) { settled = true; clearTimeout(timer); reject(error); } }
+        try { request = indexedDB.open('claritide.agent.account.v1.' + scope, 1); }
+        catch (error) { fail(error); return; }
+        request.onerror = function () { fail(request.error || new Error('HISTORY_OPEN_FAILED')); };
+        request.onblocked = function () { fail(new Error('HISTORY_STORAGE_BLOCKED')); };
+        request.onupgradeneeded = function () {
+          if (settled) { request.transaction.abort(); return; }
+          var db = request.result;
+          ['projects', 'sessions', 'meta'].forEach(function (name) {
+            if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'key' });
+          });
+        };
+        request.onsuccess = function () {
+          var db = request.result;
+          if (settled) { db.close(); return; }
+          settled = true; clearTimeout(timer);
+          var closed = false;
+          var loaded = false;
+          var transactions = new Set();
+          var queue = Promise.resolve();
+          var committed = { projects: new Map(), sessions: new Map(), meta: new Map() };
+          function assertOpen() { if (closed) throw new Error('HISTORY_ACCOUNT_CHANGED'); }
+          function transaction(mode, work) {
+            return new Promise(function (done, failed) {
+              var tx;
+              try { assertOpen(); tx = db.transaction(['projects', 'sessions', 'meta'], mode); }
+              catch (error) { failed(error); return; }
+              transactions.add(tx);
+              tx.oncomplete = function () { transactions.delete(tx); done(); };
+              tx.onabort = tx.onerror = function () { transactions.delete(tx); failed(tx.error || new Error('HISTORY_TRANSACTION_FAILED')); };
+              try { work(tx); } catch (error) { try { tx.abort(); } catch (_) {} failed(error); }
+            });
+          }
+          function rowsFor(projects, composer) {
+            var rows = { projects: new Map(), sessions: new Map(), meta: new Map() };
+            projects.forEach(function (project) {
+              var meta = { id: project.id, name: project.name, path: project.path, updatedAt: project.updatedAt || 0 };
+              rows.projects.set(project.id, JSON.stringify(meta));
+              (project.sessions || []).forEach(function (session) {
+                var value = Object.assign({}, session);
+                // Streaming fragments and native capabilities are transient.
+                Object.keys(value).forEach(function (key) { if (key.charAt(0) === '_') delete value[key]; });
+                rows.sessions.set(JSON.stringify([project.id, session.id]), JSON.stringify({ projectId: project.id, session: value }));
+              });
+            });
+            rows.meta.set('composer', JSON.stringify(composer));
+            return rows;
+          }
+          var api = {
+            load: async function () {
+              assertOpen();
+              var raw = {};
+              await transaction('readonly', function (tx) {
+                ['projects', 'sessions', 'meta'].forEach(function (name) {
+                  var read = tx.objectStore(name).getAll();
+                  read.onsuccess = function () { raw[name] = read.result; };
+                });
+              });
+              assertOpen();
+              var projects = [];
+              var byId = new Map();
+              var next = { projects: new Map(), sessions: new Map(), meta: new Map() };
+              var composer = null;
+              ['projects', 'sessions', 'meta'].forEach(function (name) {
+                (raw[name] || []).forEach(function (row) {
+                  if (!row || typeof row.key !== 'string' || typeof row.json !== 'string') throw new Error('HISTORY_RECORD_INVALID');
+                  next[name].set(row.key, row.json);
+                });
+              });
+              next.projects.forEach(function (json, key) {
+                var project = JSON.parse(json);
+                if (!project || typeof project.id !== 'string' || project.id !== key || typeof project.name !== 'string' || typeof project.path !== 'string') throw new Error('HISTORY_PROJECT_INVALID');
+                project.sessions = [];
+                projects.push(project); byId.set(project.id, project);
+              });
+              next.sessions.forEach(function (json, key) {
+                var value = JSON.parse(json);
+                var project = value && byId.get(value.projectId);
+                if (!project || !value.session || typeof value.session.id !== 'string' || key !== JSON.stringify([project.id, value.session.id]) || !Array.isArray(value.session.messages)) throw new Error('HISTORY_SESSION_INVALID');
+                project.sessions.push(value.session);
+              });
+              if (next.meta.has('composer')) composer = JSON.parse(next.meta.get('composer'));
+              committed = next; loaded = true;
+              return { projects: projects, composer: composer };
+            },
+            save: function (projects, composer) {
+              var rows;
+              try { assertOpen(); if (!loaded) throw new Error('HISTORY_NOT_LOADED'); rows = rowsFor(projects, composer); }
+              catch (error) { return Promise.reject(error); }
+              // Snapshots are captured before queueing; a later account change
+              // cannot make a queued write read the new account's state.
+              var operation = queue.catch(function () {}).then(async function () {
+                assertOpen();
+                var changed = ['projects', 'sessions', 'meta'].some(function (name) {
+                  return rows[name].size !== committed[name].size || Array.from(rows[name]).some(function (entry) { return committed[name].get(entry[0]) !== entry[1]; });
+                });
+                if (!changed) return;
+                await transaction('readwrite', function (tx) {
+                  ['projects', 'sessions', 'meta'].forEach(function (name) {
+                    var store = tx.objectStore(name);
+                    committed[name].forEach(function (_, key) { if (!rows[name].has(key)) store.delete(key); });
+                    rows[name].forEach(function (json, key) { if (committed[name].get(key) !== json) store.put({ key: key, json: json }); });
+                  });
+                });
+                assertOpen();
+                committed = rows;
+              });
+              queue = operation;
+              return operation;
+            },
+            close: function () {
+              closed = true;
+              transactions.forEach(function (tx) { try { tx.abort(); } catch (_) {} });
+              transactions.clear(); db.close();
+            }
+          };
+          db.onversionchange = function () { api.close(); };
+          resolve(api);
+        };
+      });
+    }
+    // END CLARITIDE_ACCOUNT_HISTORY_STORE
+
     (function () {
       'use strict';
 
@@ -727,6 +898,10 @@
         '更多操作': 'More actions',
         '更多': 'More',
         '运行详情': 'Activity',
+        '关于与诊断': 'About and diagnostics',
+        '诊断信息': 'Diagnostics',
+        '复制诊断': 'Copy diagnostics',
+        '复制版本与运行状态，便于定位问题。内容不含账号、对话或本地路径。': 'Copy the build and runtime status to help diagnose an issue. Account details, chats, and local paths are excluded.',
         '重命名对话': 'Rename chat',
         '重命名': 'Rename',
         '删除项目': 'Remove project',
@@ -787,6 +962,9 @@
         '已为本对话启用完全访问': 'Full access enabled for this chat.',
         '已发送停止请求': 'Stop request sent.',
         '请先停止当前执行': 'Stop the current task first.',
+        '搜索项目或对话': 'Search projects or chats',
+        '没有找到匹配的对话': 'No matching chats',
+        '在此对话继续': 'Continue in this chat',
         '本地桥接不可用': 'Native bridge unavailable',
         'Agent 已就绪': 'Agent ready',
         '运行时未配置': 'Runtime unavailable',
@@ -819,6 +997,18 @@
 
       var state = {
         projects: [],
+        accountScope: null,
+        storageEpoch: 0,
+        storageReady: false,
+        storageClient: null,
+        storageLoading: false,
+        storageError: '',
+        storageUnsaved: false,
+        draftsUnsavedLimit: false,
+        draftRevision: 0,
+        statusRequestSequence: 0,
+        storageWriteSequence: 0,
+        accountSnapshots: Object.create(null),
         activeProjectId: '',
         activeSessionId: '',
         nativeSessionId: '',
@@ -838,6 +1028,13 @@
         storageWarningShown: false,
         voiceActive: false
       };
+      state.pendingSend = false;
+      state.runningProjectId = '';
+      state.runningSessionId = '';
+      state.runStorageEpoch = null;
+      state.runningStream = '';
+      state.runningActivity = '';
+      state.approvalResponses = {};
       state.pendingApprovals = {};
       state.bufferedEvents = [];
       state.closingPromise = Promise.resolve();
@@ -952,7 +1149,7 @@
         var modal = $('#' + id);
         modal.classList.add('open');
         $('.app').inert = true;
-        var preferred = id === 'projectModal' ? $('#chooseFolder') : $('#cancelFullAccess');
+        var preferred = id === 'projectModal' ? $('#chooseFolder') : id === 'fullAccessModal' ? $('#cancelFullAccess') : null;
         (preferred || focusableElements(modal)[0]).focus();
       }
 
@@ -998,6 +1195,77 @@
         return project && (project.sessions || []).find(function (session) { return session.id === state.activeSessionId; }) || null;
       }
 
+      function resetRunningView() {
+        state.runningProjectId = '';
+        state.runningSessionId = '';
+        state.runStorageEpoch = null;
+        state.runningStream = '';
+        state.runningActivity = '';
+        state.approvalResponses = {};
+      }
+
+      function runningSession() {
+        if (state.runStorageEpoch !== state.storageEpoch) return null;
+        var project = state.projects.find(function (item) { return item.id === state.runningProjectId; });
+        return project && (project.sessions || []).find(function (item) { return item.id === state.runningSessionId; }) || null;
+      }
+
+      function viewingRunningSession() {
+        return Boolean(runningSession() && state.activeProjectId === state.runningProjectId && state.activeSessionId === state.runningSessionId);
+      }
+
+      function browsingHistory() {
+        return Boolean(runningSession() && !viewingRunningSession());
+      }
+
+      function historyProjects(query) {
+        query = safeText(query).trim().toLocaleLowerCase();
+        return state.projects.map(function (project) {
+          var projectMatches = !query || safeText(project.name).toLocaleLowerCase().indexOf(query) >= 0;
+          var sessions = (project.sessions || []).filter(function (session) {
+            return projectMatches || safeText(session.name).toLocaleLowerCase().indexOf(query) >= 0 || (session.messages || []).some(function (message) { return safeText(message.text).toLocaleLowerCase().indexOf(query) >= 0; });
+          }).slice().sort(function (left, right) { return Number(right.updatedAt || 0) - Number(left.updatedAt || 0); });
+          return { project: project, sessions: sessions, matches: projectMatches || sessions.length > 0,
+            updatedAt: (project.sessions || []).reduce(function (latest, session) { return Math.max(latest, Number(session.updatedAt || 0)); }, 0) };
+        }).filter(function (entry) { return entry.matches; }).sort(function (left, right) { return right.updatedAt - left.updatedAt; });
+      }
+
+      function renderHistoryNotice() {
+        var away = browsingHistory();
+        $('#historyNotice').hidden = !away;
+        if (!away) return;
+        var busy = state.turnActive || state.starting || state.pendingSend;
+        var pending = Object.keys(state.pendingApprovals).length;
+        $('#historyNoticeText').textContent = busy
+          ? (english ? 'Browsing saved chat. The other task is still running.' : '正在只读查看历史，原任务仍在执行。')
+          : (english ? 'The other task has ended. Choose this chat to continue here.' : '原任务已结束，可选择在当前对话继续。');
+        $('#returnRunningSession').textContent = (english ? 'Return to task' : '返回任务对话') + (pending ? (english ? ' · ' + pending + ' approvals' : ' · ' + pending + ' 项待审批') : '');
+        $('#continueViewedSession').hidden = busy;
+        $('#continueViewedSession').disabled = !state.storageReady || state.switchingConversation;
+      }
+
+      function returnToRunningSession() {
+        if (runningSession()) selectSession(state.runningProjectId, state.runningSessionId);
+      }
+
+      async function continueViewedSession() {
+        if (!state.storageReady || state.turnActive || state.starting || state.pendingSend || !browsingHistory() || state.switchingConversation) return;
+        var epoch = state.storageEpoch;
+        state.switchingConversation = true;
+        syncControls();
+        try {
+          await closeNativeSession();
+          if (epoch !== state.storageEpoch) return;
+          resetRunningView();
+          renderConversation();
+          renderAttachments();
+        } catch (error) {
+          if (epoch === state.storageEpoch) showToast(safeText(error && error.message || error));
+        } finally {
+          if (epoch === state.storageEpoch) { state.switchingConversation = false; syncControls(); }
+        }
+      }
+
       function normalizeSession(session) {
         session.model = session.model || 'default';
         session.effort = EFFORT_LEVELS.indexOf(session.effort) >= 0 ? session.effort : 'high';
@@ -1010,40 +1278,178 @@
         return session;
       }
 
-      function load() {
+      function verifiedScope(status) {
+        var scope = status && status.accountScope;
+        return typeof scope === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(scope) ? scope : null;
+      }
+
+      function updateHistoryNotice() {
+        var limitWarning = state.draftsUnsavedLimit ? (english ? 'Some drafts exceed the local saving limit and are not saved. Export your records before closing this window.' : '部分草稿超出本地保存上限，尚未保存。关闭前请导出本账号记录。') : '';
+        var text = [state.storageError, limitWarning].filter(Boolean).join(' ') || (state.storageLoading ? (english ? 'Loading your saved chats…' : '正在加载你的历史对话…') : !state.accountScope ? (english ? 'Sign in to unlock your local chats.' : '请登录以解锁本账号的本地对话。') : '');
+        $('#storageNotice').hidden = !text;
+        $('#storageNotice').classList.toggle('warning', Boolean(state.storageError || state.draftsUnsavedLimit));
+        $('#storageNoticeText').textContent = text;
+        $('#retryHistory').hidden = !state.accountScope || state.storageLoading || !state.storageError;
+        $('#retryHistory').textContent = state.storageReady ? (english ? 'Retry saving' : '重试保存') : (english ? 'Retry loading' : '重试加载');
+        $('#exportHistory').hidden = !state.accountScope || !(state.storageError || state.draftsUnsavedLimit) || !state.projects.length;
+        $('#exportHistory').textContent = english ? 'Export this account’s records' : '导出本账号记录';
+        $('#historySearch').disabled = !state.storageReady;
+        ['newProject', 'newSession', 'createProjectFromPopover'].forEach(function (id) { $('#' + id).disabled = !state.storageReady; });
+      }
+
+      function showLegacyHistoryNotice() {
+        var exists = false;
         try {
-          var raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY) || '[]';
-          var parsed = JSON.parse(raw);
-          state.projects = Array.isArray(parsed) ? parsed : [];
-          state.projects.forEach(function (project) {
-            project.path = friendlyPath(project.path);
-            project.sessions = Array.isArray(project.sessions) ? project.sessions.map(normalizeSession) : [];
-          });
-          if (state.projects.length) state.activeProjectId = state.projects[0].id;
-          loadComposerState();
-        } catch (_error) {
-          state.projects = [];
+          for (var index = 0; index < localStorage.length; index += 1) {
+            if ([STORAGE_KEY, LEGACY_STORAGE_KEY, DRAFT_STORAGE_KEY].indexOf(localStorage.key(index)) >= 0) { exists = true; break; }
+          }
+        } catch (_) {}
+        $('#legacyHistoryNotice').hidden = !exists;
+        $('#legacyHistoryNotice').textContent = english ? 'Older local history has no verified account owner. It is preserved on this device and has not been opened or assigned to this account.' : '检测到未标记账号的旧版历史，已保留在此设备上；为避免串号，暂未打开或归入当前账号。';
+      }
+
+      function memoryAccountSnapshot() {
+        return { projects: state.projects.map(function (project) {
+          return { id: project.id, name: project.name, path: friendlyPath(project.path), updatedAt: project.updatedAt, sessions: project.sessions || [] };
+        }), unsaved: state.storageUnsaved || state.draftsUnsavedLimit, composer: { activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: state.composerDrafts } };
+      }
+
+      function resetAccountMemory() {
+        clearTimeout(state.draftSaveTimer); state.draftSaveTimer = null;
+        if (recognition) { try { recognition.abort(); } catch (_) {} recognition = null; }
+        state.projects = []; state.activeProjectId = ''; state.activeSessionId = '';
+        state.nativeSessionId = ''; state.closingSessionId = '';
+        state.runningProjectId = ''; state.runningSessionId = ''; state.runStorageEpoch = -1;
+        state.runningStream = ''; state.runningActivity = ''; state.switchingConversation = false;
+        state.pendingSend = false; state.approvalResponses = Object.create(null);
+        state.turnActive = false; state.starting = false; state.bufferedEvents = [];
+        state.pendingApprovals = {}; state.fullAccessGrants = {};
+        state.composerDrafts = Object.create(null); state.attachments = [];
+        state.pendingWorkspace = null; state.pendingFullAccess = null;
+        state.draftModel = 'default'; state.draftEffort = 'high'; state.draftPermission = 'controlled';
+        state.voiceActive = false; state.storageReady = false; state.storageLoading = false;
+        state.storageError = ''; state.storageWarningShown = false;
+        state.storageUnsaved = false; state.draftsUnsavedLimit = false; state.draftRevision = 0;
+        state.draftLimitWarningShown = false;
+        $('#prompt').value = '';
+        $('#historySearch').value = '';
+        resetRunningView();
+        $('#activityPanel').hidden = true;
+        if (ui.modalId) closeModal(ui.modalId);
+        closeMenus(); closeControlPopovers();
+      }
+
+      async function synchronizeAccount(status, force) {
+        var scope = verifiedScope(status);
+        if (!force && scope === state.accountScope && (state.storageReady || state.storageLoading || state.storageError)) return;
+        if (scope !== state.accountScope || force) {
+          if (state.accountScope && (state.storageReady || state.projects.length)) {
+            captureDraft();
+            state.accountSnapshots[state.accountScope] = memoryAccountSnapshot();
+          }
+          state.storageEpoch += 1;
+          if (state.storageClient) state.storageClient.close();
+          state.storageClient = null;
+          state.storagePending = null;
+          resetAccountMemory();
+          state.accountScope = scope;
+          renderProjects(); renderConversation(); renderAttachments(); renderActivity(); syncControls();
         }
+        if (!scope) { updateHistoryNotice(); return; }
+        var epoch = state.storageEpoch;
+        state.storageLoading = true; updateHistoryNotice(); renderConversation();
+        try {
+          var client = await createAccountHistoryStore(window.indexedDB, scope);
+          if (epoch !== state.storageEpoch) { client.close(); return; }
+          state.storageClient = client;
+          var saved = await client.load();
+          if (epoch !== state.storageEpoch) return;
+          var retained = state.accountSnapshots[scope];
+          load(retained || saved, Boolean(retained));
+          state.storageReady = true; state.storageLoading = false;
+          state.storageError = '';
+          restoreDraft(); renderProjects(); renderConversation(); renderAttachments(); renderActivity();
+          if (retained) save();
+        } catch (error) {
+          if (epoch !== state.storageEpoch) return;
+          state.storageLoading = false; state.storageReady = false;
+          state.storageError = english ? 'Saved chats could not be loaded. Your existing records have not been replaced. Retry loading before starting a new chat.' : '历史对话加载失败，已有记录未被覆盖。请重试加载后再开始新对话。';
+          var recovery = state.accountSnapshots[scope];
+          if (recovery) {
+            load(recovery, true);
+            restoreDraft(); renderProjects(); renderConversation(); renderAttachments(); renderActivity();
+            state.storageError += english ? ' This account’s unsaved records are still available to export.' : ' 本账号尚未保存的记录仍可导出。';
+          }
+        } finally {
+          if (epoch === state.storageEpoch) { updateHistoryNotice(); syncControls(); }
+        }
+      }
+
+      function load(saved, retained) {
+        state.storageUnsaved = Boolean(retained);
+        state.projects = saved.projects;
+        state.projects.forEach(function (project) {
+          project.path = friendlyPath(project.path);
+          project.sessions = Array.isArray(project.sessions) ? project.sessions.map(normalizeSession) : [];
+        });
+        if (state.projects.length) state.activeProjectId = state.projects[0].id;
+        loadComposerState(saved.composer);
+        if (retained && saved.composer) state.composerDrafts = saved.composer.drafts || Object.create(null);
       }
 
       function storageWarning() {
-        if (state.storageWarningShown) return;
-        state.storageWarningShown = true;
-        showToast(english ? 'Local saving is unavailable or full. Keep this window open and copy important drafts before closing.' : '本地保存不可用或空间已满。请保留当前窗口，关闭前复制重要草稿。');
+        state.storageUnsaved = true;
+        state.storageError = english ? 'Recent changes are not saved. Keep this window open, retry saving, or export this account’s records before closing.' : '最近的修改尚未保存。请保留当前窗口，重试保存，或在关闭前导出本账号记录。';
+        updateHistoryNotice();
       }
 
       function save() {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.projects.map(function (project) {
-            return { id: project.id, name: project.name, path: friendlyPath(project.path), sessions: project.sessions || [] };
-          })));
+        if (!state.storageReady || !state.storageClient || !state.accountScope) return false;
+        var epoch = state.storageEpoch;
+        var sequence = ++state.storageWriteSequence;
+        var projects = state.projects.map(function (project) {
+          return { id: project.id, name: project.name, path: friendlyPath(project.path), updatedAt: project.updatedAt, sessions: project.sessions || [] };
+        });
+        var composer = composerSnapshot();
+        var draftRevision = state.draftRevision;
+        state.storageUnsaved = true;
+        state.accountSnapshots[state.accountScope] = memoryAccountSnapshot();
+        state.storagePending = state.storageClient.save(projects, composer).then(function () {
+          if (epoch === state.storageEpoch && sequence === state.storageWriteSequence) {
+            state.storageError = '';
+            state.storageUnsaved = draftRevision !== state.draftRevision;
+            state.accountSnapshots[state.accountScope] = memoryAccountSnapshot();
+            updateHistoryNotice();
+          }
           return true;
-        } catch (_error) {
-          // Storage failure must never turn an already accepted native send into
-          // a failed request, or remove the in-memory conversation.
-          storageWarning();
-          return false;
-        }
+        }).catch(function () { if (epoch === state.storageEpoch) storageWarning(); return false; });
+        return true;
+      }
+
+      async function retryHistory() {
+        if (state.storageReady) { save(); return; }
+        if (!bridge) return;
+        var request = ++state.statusRequestSequence;
+        var epoch = state.storageEpoch;
+        try {
+          var status = await bridge.getStatus();
+          if (request !== state.statusRequestSequence || epoch !== state.storageEpoch) return;
+          state.status = status;
+          await synchronizeAccount(status, true);
+        } catch (_) { if (request === state.statusRequestSequence && epoch === state.storageEpoch) storageWarning(); }
+      }
+
+      async function exportAccountHistory() {
+        if (!state.accountScope || !state.projects.length) return;
+        captureDraft();
+        var scope = state.accountScope;
+        var epoch = state.storageEpoch;
+        var data = JSON.stringify({ format: 'claritide-account-history-v1', accountScope: scope, exportedAt: new Date().toISOString(), projects: state.projects.map(function (project) { return { id: project.id, name: project.name, path: friendlyPath(project.path), sessions: project.sessions || [] }; }), composer: { activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: state.composerDrafts } }, null, 2);
+        // Clipboard export uses the same supported path as answer copy.
+        // It avoids a WebView download URL carrying sensitive history.
+        var copied = await copyOutputText(data);
+        if (scope !== state.accountScope || epoch !== state.storageEpoch) return;
+        if (copied !== false) showToast(english ? 'This account’s records were copied as JSON. Save them in a local .json file.' : '本账号记录已复制为 JSON，请粘贴保存到本地 .json 文件。');
       }
 
       function composerKey(projectId, sessionId) {
@@ -1070,14 +1476,18 @@
         if (!state.activeProjectId) return;
         var key = composerKey();
         var text = $('#prompt').value;
-        if (text || state.attachments.length) {
-          state.composerDrafts[key] = { text: text, attachments: copyAttachments(state.attachments), updatedAt: Date.now() };
+        var previous = state.composerDrafts[key];
+        var attachments = copyAttachments(state.attachments);
+        var changed = previous ? previous.text !== text || JSON.stringify(previous.attachments) !== JSON.stringify(attachments) : Boolean(text || attachments.length);
+        if (!text && !attachments.length && previous) changed = true;
+        if (!changed) return;
+        state.draftRevision += 1; state.storageUnsaved = true;
+        if (text || attachments.length) {
+          state.composerDrafts[key] = { text: text, attachments: attachments, updatedAt: Date.now() };
         } else delete state.composerDrafts[key];
       }
 
-      function persistComposerState() {
-        clearTimeout(state.draftSaveTimer);
-        state.draftSaveTimer = null;
+      function composerSnapshot() {
         var drafts = Object.create(null);
         var bytes = new TextEncoder().encode(JSON.stringify({ activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: {} })).length;
         var count = 0;
@@ -1092,19 +1502,25 @@
           bytes += size;
           count += 1;
         });
-        try {
-          localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: drafts }));
-          if (limited && !state.draftLimitWarningShown) {
-            state.draftLimitWarningShown = true;
-            showToast(english ? 'Draft storage limit reached. Only recent drafts that fit are saved for reopening; keep this window open for the others.' : '草稿保存已达上限，重开时仅恢复可容纳的最近草稿；其余草稿请保留当前窗口或先复制。');
-          }
-        } catch (_error) { storageWarning(); }
+        state.draftsUnsavedLimit = limited;
+        updateHistoryNotice();
+        if (limited && !state.draftLimitWarningShown) {
+          state.draftLimitWarningShown = true;
+          showToast(english ? 'Draft storage limit reached. Keep this window open or export your records to preserve the remaining drafts.' : '草稿保存已达上限，请保留当前窗口或导出记录以保留其余草稿。');
+        }
+        return { activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: drafts };
+      }
+
+      function persistComposerState() {
+        clearTimeout(state.draftSaveTimer); state.draftSaveTimer = null;
+        save();
+        return state.storagePending || Promise.resolve(false);
       }
 
       function rememberDraft(immediate) {
         captureDraft();
         clearTimeout(state.draftSaveTimer);
-        if (immediate) persistComposerState();
+        if (immediate) return persistComposerState();
         else state.draftSaveTimer = setTimeout(persistComposerState, 250);
       }
 
@@ -1116,11 +1532,9 @@
         renderAttachments();
       }
 
-      function loadComposerState() {
+      function loadComposerState(saved) {
         try {
-          var raw = localStorage.getItem(DRAFT_STORAGE_KEY);
-          if (!raw || raw.length > MAX_SAVED_DRAFT_BYTES * 2) return;
-          var saved = JSON.parse(raw);
+          if (!saved || typeof saved !== 'object') return;
           var total = 0;
           Object.keys(saved.drafts || {}).slice(0, MAX_SAVED_DRAFTS).forEach(function (key) {
             var owner;
@@ -1141,7 +1555,7 @@
 
       function retryFailedRequest(sessionId) {
         var session = activeSession();
-        if (!session || session.id !== sessionId || state.turnActive || state.starting) return;
+        if (!session || session.id !== sessionId || recoveryInteractionBlocked()) return;
         var request = session.lastFailedRequest;
         if (!request) return;
         var text = $('#prompt').value;
@@ -1214,8 +1628,12 @@
       function renderProjects() {
         var host = $('#projectList');
         host.textContent = '';
-        $('#projectEmpty').hidden = state.projects.length > 0;
-        state.projects.forEach(function (project) {
+        $('#projectEmpty').hidden = !state.storageReady || state.projects.length > 0;
+        var query = $('#historySearch').value;
+        var entries = historyProjects(query);
+        $('#historyEmpty').hidden = entries.length > 0 || !query.trim();
+        entries.forEach(function (entry) {
+          var project = entry.project;
           var section = document.createElement('section');
           section.className = 'project';
           var shell = document.createElement('div');
@@ -1233,14 +1651,14 @@
           shell.appendChild(row);
           shell.appendChild(actionMenu('project', project.id));
           section.appendChild(shell);
-          if (project.id === state.activeProjectId) {
+          if (project.id === state.activeProjectId || query.trim()) {
             var list = document.createElement('div');
             list.className = 'session-list';
-            (project.sessions || []).forEach(function (session) {
+            entry.sessions.forEach(function (session) {
               var sessionShell = document.createElement('div');
               sessionShell.className = 'item-shell session-shell' + (session.id === state.activeSessionId ? ' active' : '');
               var button = document.createElement('button');
-              button.className = 'session-row';
+              button.className = 'session-row' + (session.id === state.runningSessionId && project.id === state.runningProjectId && state.turnActive ? ' is-running' : '');
               button.type = 'button';
               var title = document.createElement('span');
               title.className = 'session-title';
@@ -1255,6 +1673,8 @@
           }
           host.appendChild(section);
         });
+        $$('.project-row, .session-row', host).forEach(function (button) { button.disabled = state.starting || state.pendingSend || state.switchingConversation; });
+        $$('.item-menu button', host).forEach(function (button) { button.disabled = state.turnActive || state.starting || state.pendingSend || browsingHistory(); });
         renderProjectOptions();
       }
 
@@ -1299,7 +1719,10 @@
         var inner = document.createElement('div');
         var heading = document.createElement('h1');
         var copy = document.createElement('p');
-        if (project) {
+        if (!state.storageReady) {
+          heading.textContent = state.storageError ? (english ? 'Local chats need attention' : '本地历史需要恢复') : state.storageLoading ? (english ? 'Loading your chats…' : '正在加载历史对话…') : (english ? 'Verify your account to unlock local chats' : '验证账号后显示本地对话');
+          copy.textContent = state.storageError || (english ? 'Your saved records stay on this device.' : '已保存的记录仍保留在此设备上。');
+        } else if (project) {
           heading.textContent = tr('想完成什么？');
           copy.textContent = tr('输入任务，AI 会按所选权限处理当前项目。');
         } else {
@@ -1308,7 +1731,7 @@
         }
         inner.appendChild(heading);
         inner.appendChild(copy);
-        if (!project) {
+        if (!project && state.storageReady) {
           var start = document.createElement('button');
           start.type = 'button';
           start.className = 'btn primary';
@@ -1336,8 +1759,10 @@
             if (!document.execCommand || !document.execCommand('copy')) throw new Error('clipboard_unavailable');
           }
           showToast(english ? 'Copied' : '已复制');
+          return true;
         } catch (error) {
           showToast(english ? 'Could not copy. Select the text and copy it manually.' : '复制失败，请选中文本后手动复制。');
+          return false;
         } finally {
           if (temporary) temporary.remove();
           if (previous && previous.focus) previous.focus();
@@ -1594,8 +2019,13 @@
         $('#conversationInner').appendChild(card);
       }
 
+      function recoveryInteractionBlocked() {
+        return Boolean(state.turnActive || state.starting || state.pendingSend || state.switchingConversation || state.storageReady === false || (typeof browsingHistory === 'function' && browsingHistory()));
+      }
+
       function appendErrorCard(message, approvalUnsupported) {
         var errorSessionId = state.activeSessionId;
+        var errorEpoch = state.storageEpoch;
         var card = document.createElement('div');
         card.className = approvalUnsupported ? 'approval-card' : 'error-card';
         var title = document.createElement('p');
@@ -1609,11 +2039,23 @@
         var retry = document.createElement('button');
         retry.type = 'button';
         retry.className = 'card-button';
-        retry.textContent = approvalUnsupported ? tr('调整权限') : tr('重试');
-        retry.addEventListener('click', function () {
+        var errorSession = activeSession();
+        var needsWorkspace = errorSession && errorSession.workspaceRecoveryNeeded;
+        var needsModel = unavailableSelectedModel();
+        retry.textContent = approvalUnsupported ? tr('调整权限') : needsModel ? (english ? 'Choose an available model' : '选择可用模型') : needsWorkspace ? (english ? 'Choose the original folder' : '重新选择原文件夹') : tr('重试');
+        retry.disabled = recoveryInteractionBlocked();
+        retry.addEventListener('click', async function () {
+          if (errorEpoch !== state.storageEpoch || activeSession() !== errorSession || recoveryInteractionBlocked()) return;
           if (approvalUnsupported) {
             newConversation();
             toggleControlPopover('permission');
+          } else if (needsModel) {
+            retry.disabled = true;
+            await chooseRecoveryModel(errorSessionId);
+            retry.disabled = recoveryInteractionBlocked();
+          } else if (needsWorkspace) {
+            retry.disabled = true;
+            void chooseRecoveryWorkspace(errorSessionId).finally(function () { retry.disabled = recoveryInteractionBlocked(); });
           } else {
             retryFailedRequest(errorSessionId);
           }
@@ -1628,12 +2070,16 @@
           var recover = document.createElement('button');
           recover.type = 'button'; recover.className = 'card-button';
           recover.textContent = english ? 'Continue with saved chat text' : '使用保存文本续接';
+          recover.disabled = recoveryInteractionBlocked();
           recover.addEventListener('click', async function () {
             var session = activeSession();
-            if (!session) return;
+            var ownerEpoch = state.storageEpoch;
+            if (!session || errorEpoch !== state.storageEpoch || session !== errorSession || session.id !== errorSessionId || recoveryInteractionBlocked()) return;
             await closeNativeSession();
+            if (ownerEpoch !== state.storageEpoch || session !== activeSession() || recoveryInteractionBlocked()) return;
             delete session.runtimeSessionId;
             session.nativeHistoryInitialized = false;
+            delete session.textContinuation;
             state.attemptingResume = false;
             if (!$('#prompt').value && session.lastFailedRequest) {
               $('#prompt').value = session.lastFailedRequest.text;
@@ -1705,20 +2151,34 @@
         var actions = document.createElement('div');
         actions.className = 'card-actions';
         var sessionId = state.nativeSessionId;
+        var approvalEpoch = state.storageEpoch;
         [['allow_once', english ? 'Allow once' : '允许一次'], ['allow_session', english ? 'Allow this operation for this session' : '本会话允许此操作'], ['deny', english ? 'Decline' : '拒绝']].forEach(function (choice) {
           var button = document.createElement('button');
           button.type = 'button'; button.className = 'card-button'; button.textContent = choice[1];
+          button.disabled = Boolean(state.approvalResponses[approval.requestId]);
           button.addEventListener('click', async function () {
+            if (approvalEpoch !== state.storageEpoch || sessionId !== state.nativeSessionId || state.approvalResponses[approval.requestId]) return;
+            state.approvalResponses[approval.requestId] = true;
             status.textContent = '';
             $$('.card-button', card).forEach(function (item) { item.disabled = true; });
             try {
               await bridge.respondToApproval({ sessionId: sessionId, requestId: approval.requestId, decision: choice[0] });
+              if (approvalEpoch !== state.storageEpoch || sessionId !== state.nativeSessionId) return;
               delete state.pendingApprovals[approval.requestId];
-              card.remove();
-              updateRunIndicator('正在处理任务');
+              var acceptedCard = document.getElementById(id);
+              (acceptedCard || card).remove();
+              state.runningActivity = '正在处理任务';
+              if (viewingRunningSession()) updateRunIndicator('正在处理任务');
             } catch (error) {
-              status.textContent = safeText(error && error.message || error);
-              $$('.card-button', card).forEach(function (item) { item.disabled = false; });
+              if (approvalEpoch !== state.storageEpoch || sessionId !== state.nativeSessionId) return;
+              var failedCard = document.getElementById(id) || card;
+              $('.approval-status', failedCard).textContent = safeText(error && error.message || error);
+              $$('.card-button', failedCard).forEach(function (item) { item.disabled = false; });
+            } finally {
+              if (approvalEpoch === state.storageEpoch && sessionId === state.nativeSessionId) {
+                delete state.approvalResponses[approval.requestId];
+                syncControls();
+              }
             }
           });
           actions.appendChild(button);
@@ -1742,7 +2202,16 @@
         });
         if (session.lastError) appendErrorCard(session.lastError.message, session.lastError.code === 'tool_approval_unsupported');
         else if (session.lastResult) appendResultCard(session.lastResult);
-        if (state.turnActive || state.starting) appendRunIndicator(state.starting ? '正在启动 Agent' : '正在处理任务');
+        if (viewingRunningSession()) {
+          if (state.runningStream) {
+            var streamingBody = appendMessage('agent', '', Date.now(), false);
+            streamingBody._streaming = true;
+            streamingBody._markdownSource = state.runningStream;
+            streamingBody.textContent = state.runningStream;
+          }
+          if (state.turnActive || state.starting) appendRunIndicator(state.runningActivity || (state.starting ? '正在启动 Agent' : '正在处理任务'));
+          Object.keys(state.pendingApprovals).forEach(function (key) { renderApproval(state.pendingApprovals[key]); });
+        }
         scrollConversation();
       }
 
@@ -1786,13 +2255,13 @@
         return safeText(payload.message || payload.text || payload.code || payload.reason || '');
       }
 
-      function recordEvent(kind, payload, timestamp) {
-        var session = activeSession();
+      function recordEvent(kind, payload, timestamp, targetSession) {
+        var session = targetSession || activeSession();
         if (!session) return;
         session.events.push({ kind: kind, payload: payload || {}, time: timestamp || Date.now() });
         session.events = session.events.slice(-80);
         save();
-        renderActivity();
+        if (session === activeSession()) renderActivity();
       }
 
       function renderActivity() {
@@ -1825,6 +2294,34 @@
         renderActivity();
       }
 
+      function diagnosticsText(status) {
+        var info = status && status.buildInfo || {};
+        var lines = ['Claritide diagnostics'];
+        ['appVersion', 'buildNumber', 'productRevision', 'webuiRevision', 'engineRevision', 'platform', 'runId'].forEach(function (key) {
+          var value = info[key];
+          if (typeof value === 'string' && /^[A-Za-z0-9._ -]{1,100}$/.test(value)) lines.push(key + ': ' + value);
+        });
+        lines.push('runtimeAvailable: ' + Boolean(status && status.available));
+        return lines.join('\n');
+      }
+
+      function openDiagnostics() {
+        $('#diagnosticsText').value = diagnosticsText(state.status);
+        $('#headerMenu').removeAttribute('open');
+        openModal('diagnosticsModal');
+      }
+
+      async function copyDiagnostics() {
+        var field = $('#diagnosticsText');
+        try {
+          await navigator.clipboard.writeText(field.value);
+          showToast(english ? 'Diagnostics copied.' : '诊断信息已复制。');
+        } catch (_) {
+          field.focus(); field.select();
+          showToast(english ? 'Select and copy the diagnostics above.' : '请复制上方已选中的诊断信息。');
+        }
+      }
+
       function effortLabel(value) {
         return tr({ low: '快速', medium: '标准', high: '深度', xhigh: '极高', max: '最大' }[value] || '深度');
       }
@@ -1846,22 +2343,51 @@
         return tr(value === 'readonly' ? '只读访问' : value === 'full' ? '完全访问' : '请求批准');
       }
 
+      function unavailableSelectedModel() {
+        var current = currentModel();
+        var models = state.status && state.status.allowedModels;
+        return Boolean(state.status && state.status.available && Array.isArray(models) && models.length && current !== 'default' && models.indexOf(current) < 0);
+      }
+
+      async function chooseRecoveryModel(sessionId) {
+        var session = activeSession();
+        var ownerEpoch = state.storageEpoch;
+        if (!session || session.id !== sessionId || recoveryInteractionBlocked()) return;
+        try {
+          // Model changes require an idle native session to be closed first.
+          // Keep its history ID so the next send can resume the same chat.
+          if (state.nativeSessionId || state.closingSessionId) await closeNativeSession();
+          if (ownerEpoch !== state.storageEpoch || session !== activeSession() || recoveryInteractionBlocked()) return;
+          fillModels(state.status && state.status.allowedModels || []);
+          syncControls();
+          $('#modelEffortPopover').hidden = false;
+          $('#modelEffortButton').setAttribute('aria-expanded', 'true');
+          $('#modelSelect').focus();
+        } catch (error) {
+          if (ownerEpoch === state.storageEpoch && session === activeSession()) showToast(safeText(error && error.message || error));
+        }
+      }
+
       function fillModels(models) {
         var select = $('#modelSelect');
-        var current = currentModel();
+        var current = currentModel() || 'default';
+        var available = Boolean(state.status && state.status.available && models.length);
+        var values = models.slice();
+        // Refreshing an expired authorization must never rewrite a saved choice.
+        // "default" remains a choice; native startup resolves it on an actual send.
+        if (values.indexOf(current) < 0) values.unshift(current);
         select.textContent = '';
-        var values = models.length ? models.slice() : ['default'];
         values.forEach(function (model) {
           var option = document.createElement('option');
           option.value = model;
-          option.textContent = modelLabel(model);
+          var missing = available && model === current && model !== 'default' && models.indexOf(model) < 0;
+          option.disabled = missing;
+          option.textContent = modelLabel(model) + (missing ? (english ? ' — unavailable, choose another' : ' — 不可用，请重新选择') : '');
+          if (model === 'default' && available && state.status.defaultModel) option.textContent += ' · ' + modelLabel(state.status.defaultModel);
           select.appendChild(option);
         });
-        if (values.indexOf(current) < 0) current = state.status && values.indexOf(state.status.defaultModel) >= 0 ? state.status.defaultModel : values[0];
         select.value = current;
-        state.draftModel = current;
-        var session = activeSession();
-        if (session && values.indexOf(session.model) < 0) { session.model = current; save(); }
+        select.title = unavailableSelectedModel() ? (english ? 'Your previous model is no longer available. Choose a model to continue; your draft is saved.' : '原模型已不可用，请选择模型继续；草稿已保留。') : '';
       }
 
       function renderAttachments() {
@@ -1876,8 +2402,10 @@
           var remove = document.createElement('button');
           remove.type = 'button';
           remove.textContent = '×';
+          remove.disabled = browsingHistory() || !state.storageReady;
           remove.setAttribute('aria-label', (english ? 'Remove ' : '移除 ') + attachment.name);
           remove.addEventListener('click', function () {
+            if (browsingHistory() || !state.storageReady) return;
             state.attachments.splice(index, 1);
             rememberDraft(true);
             renderAttachments();
@@ -1892,10 +2420,11 @@
       function syncControls() {
         var project = activeProject();
         var session = activeSession();
-        var projectReady = Boolean(project);
+        var readOnly = browsingHistory() || state.switchingConversation;
+        var projectReady = Boolean(project && state.storageReady && !readOnly);
         var runtimeReady = Boolean(state.status && state.status.available);
         var locked = Boolean(state.nativeSessionId);
-        var busy = state.turnActive || state.starting;
+        var busy = state.turnActive || state.starting || state.pendingSend;
         var promptHasValue = Boolean($('#prompt').value.trim() || state.attachments.length);
 
         $('#prompt').disabled = !projectReady || !runtimeReady;
@@ -1909,7 +2438,7 @@
         $('#voiceButton').disabled = !projectReady || !runtimeReady || !SpeechRecognition || busy;
         $('#voiceButton').title = !SpeechRecognition ? tr('当前系统不支持语音输入') : tr('语音输入');
 
-        $('#send').disabled = busy ? !state.turnActive : !projectReady || !runtimeReady || !promptHasValue;
+        $('#send').disabled = readOnly || !state.storageReady || (busy ? !state.turnActive : !projectReady || !runtimeReady || !promptHasValue);
         $('#sendLabel').textContent = tr(state.turnActive ? '停止' : '发送');
         $('#send').setAttribute('aria-label', tr(state.turnActive ? '停止' : '发送'));
         $('#send').classList.toggle('stop-state', state.turnActive);
@@ -1932,11 +2461,16 @@
           button.classList.toggle('selected', selected);
           $('.check', button).textContent = selected ? tr('当前') : '';
         });
-        $('#renameActiveSession').disabled = !session;
-        $('#deleteActiveSession').disabled = !session;
+        $('#renameActiveSession').disabled = !session || readOnly || busy;
+        $('#deleteActiveSession').disabled = !session || readOnly || busy;
+        $$('.project-row, .session-row').forEach(function (button) { button.disabled = state.starting || state.pendingSend || state.switchingConversation; });
+        $$('.item-menu button').forEach(function (button) { button.disabled = readOnly || busy || !state.storageReady; });
+        $$('#attachmentTray button').forEach(function (button) { button.disabled = readOnly || !state.storageReady; });
+        renderHistoryNotice();
       }
 
       async function closeNativeSession(clearOnline) {
+        var epoch = state.storageEpoch;
         var id = state.nativeSessionId || state.closingSessionId;
         state.closingSessionId = id;
         state.nativeSessionId = '';
@@ -1946,16 +2480,19 @@
         var previous = state.closingPromise;
         var operation = (async function () {
           await previous;
+          if (epoch !== state.storageEpoch) return;
           if (bridge && (id || clearOnline)) {
             await bridge.close({
               sessionId: id || null,
               clearOnline: clearOnline === true
             });
+            if (epoch !== state.storageEpoch) return;
             if (id) {
               for (var attempt = 0; attempt < 45; attempt += 1) {
                 var sessions = await bridge.listSessions();
+                if (epoch !== state.storageEpoch) return;
                 var pending = sessions.find(function (item) { return item.sessionId === id && (item.reaped === false || item.phase === 'running' || item.phase === 'closing'); });
-                if (!pending) { state.closingSessionId = ''; return; }
+                if (!pending) { if (state.closingSessionId === id) state.closingSessionId = ''; return; }
                 await new Promise(function (resolve) { window.setTimeout(resolve, 100); });
               }
               throw new Error(english ? 'The previous task is still closing. Please retry.' : '上一个任务仍在关闭，请稍后重试。');
@@ -1964,14 +2501,15 @@
         })();
         // Keep the queue recoverable, but propagate this operation's failure to
         // callers. A later send retries cleanup before starting another child.
-        state.closingPromise = operation.catch(function (error) { showToast(safeText(error && error.message || error)); });
+        state.closingPromise = operation.catch(function (error) { if (epoch === state.storageEpoch) showToast(safeText(error && error.message || error)); });
         return operation;
       }
 
       function selectProject(projectId) {
-        if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        if (state.starting || state.pendingSend || state.switchingConversation) return showToast(english ? 'Wait for the message to be accepted.' : '正在发送，请稍等。');
+        if (!state.projects.some(function (project) { return project.id === projectId; })) return;
         rememberDraft(true);
-        void closeNativeSession();
+        if (!runningSession()) void closeNativeSession();
         state.activeProjectId = projectId;
         state.activeSessionId = '';
         restoreDraft();
@@ -1986,9 +2524,10 @@
       }
 
       function selectSession(projectId, sessionId) {
-        if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        if (state.starting || state.pendingSend || state.switchingConversation) return showToast(english ? 'Wait for the message to be accepted.' : '正在发送，请稍等。');
+        if (!state.projects.some(function (project) { return project.id === projectId && project.sessions.some(function (session) { return session.id === sessionId; }); })) return;
         rememberDraft(true);
-        void closeNativeSession();
+        if (!runningSession()) void closeNativeSession();
         state.activeProjectId = projectId;
         state.activeSessionId = sessionId;
         restoreDraft();
@@ -2003,13 +2542,15 @@
       }
 
       function newConversation() {
+        if (!state.storageReady) { updateHistoryNotice(); return; }
         if (!activeProject()) {
           openProjectModal();
           return;
         }
-        if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        if (state.turnActive || state.starting || state.pendingSend) return showToast('请先停止当前执行');
         rememberDraft(true);
         void closeNativeSession();
+        resetRunningView();
         state.activeSessionId = '';
         restoreDraft();
         persistComposerState();
@@ -2027,6 +2568,7 @@
       }
 
       function openProjectModal() {
+        if (!state.storageReady) { updateHistoryNotice(); return; }
         closeControlPopovers();
         state.pendingWorkspace = null;
         $('#projectName').value = '';
@@ -2036,10 +2578,12 @@
       }
 
       async function chooseWorkspace() {
+        if (!state.storageReady) return;
+        var epoch = state.storageEpoch;
         if (!bridge) return showToast('本地桥接不可用');
         try {
           var workspace = await bridge.selectWorkspace();
-          if (!workspace) return;
+          if (!workspace || epoch !== state.storageEpoch) return;
           state.pendingWorkspace = workspace;
           $('#projectPath').value = friendlyPath(workspace.path || workspace.name || '');
           if (!$('#projectName').value) $('#projectName').value = workspace.name || (english ? 'New project' : '新项目');
@@ -2050,12 +2594,14 @@
       }
 
       function createProject() {
+        if (!state.storageReady) { updateHistoryNotice(); return; }
         var workspace = state.pendingWorkspace;
         var name = $('#projectName').value.trim();
         if (!workspace || !name) return;
-        if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        if (state.turnActive || state.starting || state.pendingSend) return showToast('请先停止当前执行');
         rememberDraft(true);
         void closeNativeSession();
+        resetRunningView();
         var project = { id: uid('project'), name: name, path: friendlyPath(workspace.path), nativeWorkspace: workspace, sessions: [] };
         state.projects.unshift(project);
         state.activeProjectId = project.id;
@@ -2075,6 +2621,7 @@
       }
 
       function renameProject(projectId) {
+        if (!state.storageReady || browsingHistory() || state.turnActive || state.starting || state.pendingSend) return;
         var project = state.projects.find(function (item) { return item.id === projectId; });
         if (!project) return;
         var name = window.prompt(tr('项目名称'), project.name);
@@ -2087,12 +2634,16 @@
       }
 
       async function deleteProject(projectId) {
+        if (!state.storageReady || browsingHistory() || state.turnActive || state.starting || state.pendingSend) return;
+        var epoch = state.storageEpoch;
         var project = state.projects.find(function (item) { return item.id === projectId; });
         if (!project) return;
         var message = english ? 'Remove project "' + project.name + '"? Local files will not be deleted.' : '删除项目“' + project.name + '”？只会删除 Claritide 中的项目和对话记录，不会删除本地文件。';
         if (!window.confirm(message)) return;
         rememberDraft(true);
         if (projectId === state.activeProjectId) await closeNativeSession();
+        if (epoch !== state.storageEpoch) return;
+        if (projectId === state.runningProjectId) resetRunningView();
         Object.keys(state.composerDrafts).forEach(function (key) { if (JSON.parse(key)[0] === projectId) delete state.composerDrafts[key]; });
         state.projects = state.projects.filter(function (item) { return item.id !== projectId; });
         if (projectId === state.activeProjectId) {
@@ -2111,6 +2662,7 @@
       }
 
       function renameSession(sessionId) {
+        if (!state.storageReady || browsingHistory() || state.turnActive || state.starting || state.pendingSend) return;
         var project = activeProject();
         var session = project && (project.sessions || []).find(function (item) { return item.id === sessionId; });
         if (!session) return;
@@ -2124,12 +2676,16 @@
       }
 
       async function deleteSession(sessionId) {
+        if (!state.storageReady || browsingHistory() || state.turnActive || state.starting || state.pendingSend) return;
+        var epoch = state.storageEpoch;
         var project = activeProject();
         var session = project && (project.sessions || []).find(function (item) { return item.id === sessionId; });
         if (!session) return;
         if (!window.confirm(english ? 'Delete chat "' + session.name + '"?' : '删除对话“' + session.name + '”？')) return;
         rememberDraft(true);
         if (sessionId === state.activeSessionId) await closeNativeSession();
+        if (epoch !== state.storageEpoch) return;
+        if (project.id === state.runningProjectId && sessionId === state.runningSessionId) resetRunningView();
         delete state.composerDrafts[composerKey(project.id, sessionId)];
         project.sessions = project.sessions.filter(function (item) { return item.id !== sessionId; });
         if (sessionId === state.activeSessionId) { state.activeSessionId = ''; restoreDraft(); scrollConversation(true); }
@@ -2242,50 +2798,119 @@
         return tr('正在处理任务');
       }
 
+      function sameWorkspacePath(first, second) {
+        function normalize(value) {
+          var path = friendlyPath(value).replace(/^UNC\\/i, '\\\\');
+          var windowsPath = /^[a-z]:[\\/]|^\\\\/i.test(path);
+          if (windowsPath) path = path.replace(/\\/g, '/').toLowerCase();
+          return path.replace(/\/+$/, '');
+        }
+        return normalize(first) === normalize(second);
+      }
+
+      function requireOriginalWorkspace(project, workspace) {
+        if (!workspace) throw new Error(english ? 'Choose the original project folder to continue.' : '请选择原项目文件夹后继续。');
+        if (project.path && (!workspace.path || !sameWorkspacePath(project.path, workspace.path))) {
+          throw new Error((english ? 'Choose the original project folder: ' : '请选择原项目文件夹：') + friendlyPath(project.path) + (english ? '. The project location has not changed.' : '。项目目录未更改。'));
+        }
+        return workspace;
+      }
+
+      async function chooseRecoveryWorkspace(sessionId) {
+        var project = activeProject(), session = activeSession();
+        var ownerEpoch = state.storageEpoch;
+        if (!project || !session || session.id !== sessionId || recoveryInteractionBlocked()) return;
+        try {
+          var selected = await bridge.selectWorkspace();
+          if (ownerEpoch !== state.storageEpoch || project !== activeProject() || session !== activeSession() || recoveryInteractionBlocked() || !selected) return;
+          var workspace = requireOriginalWorkspace(project, selected);
+          state.workspaceRetryCandidate = { project: project, session: session, workspace: workspace };
+          retryFailedRequest(sessionId);
+          showToast(english ? 'Original folder selected. Send your message to retry.' : '已选择原文件夹，点击发送重试。');
+        } catch (error) {
+          if (ownerEpoch !== state.storageEpoch || project !== activeProject() || session !== activeSession()) return;
+          state.workspaceRetryCandidate = null;
+          showToast(safeText(error && error.message || error));
+        }
+      }
+
       async function ensureNativeSession() {
-        await state.closingPromise;
-        if (state.closingSessionId) await closeNativeSession();
         var project = activeProject();
         var session = activeSession();
+        var ownerEpoch = state.storageEpoch;
         if (!project || !session) throw new Error(tr('选择项目'));
+        function ownerIsCurrent() {
+          return ownerEpoch === state.storageEpoch && state.storageReady !== false && project === activeProject() && session === activeSession();
+        }
+        function requireCurrentOwner() {
+          if (!ownerIsCurrent()) throw new Error(english ? 'The active chat changed. Please retry in the selected chat.' : '当前对话已更改，请在所选对话中重试。');
+        }
+        await state.closingPromise;
+        requireCurrentOwner();
+        if (state.closingSessionId) { await closeNativeSession(); requireCurrentOwner(); }
+        if (unavailableSelectedModel()) {
+          throw new Error(english ? 'Your previous model is no longer available. Choose another model to continue; your draft is saved.' : '原模型已不可用，请选择其他模型继续；草稿已保留。');
+        }
         if (session.permission === 'full' && !state.fullAccessGrants[session.id]) {
           throw new Error(english ? 'Full access must be confirmed again for this app run.' : '完全访问需要在本次应用运行期间重新确认');
         }
-        if (!project.nativeWorkspace) {
-          var workspace = await bridge.selectWorkspace();
-          if (!workspace) throw new Error(english ? 'Choose the project folder again.' : '需要重新授权项目文件夹');
+        var candidate = state.workspaceRetryCandidate;
+        var workspace = candidate && candidate.project === project && candidate.session === session ? candidate.workspace : project.nativeWorkspace;
+        state.workspaceRetryCandidate = null;
+        state.attemptingResume = Boolean(session.runtimeSessionId);
+        var workspaceValidated = false;
+        try {
+          if (!workspace) workspace = await bridge.selectWorkspace();
+          requireCurrentOwner();
+          requireOriginalWorkspace(project, workspace);
+          workspaceValidated = true;
+          var id = session.runtimeSessionId || crypto.randomUUID();
+          var existing = (await bridge.listSessions()).find(function (item) { return item.sessionId === id && item.phase === 'running' && item.reaped !== true; });
+          requireCurrentOwner();
+          if (existing) {
+            if (existing.permission === session.permission && existing.model === session.model && existing.effort === session.effort && existing.workspaceId === workspace.id) {
+              project.nativeWorkspace = workspace;
+              session.workspaceRecoveryNeeded = false;
+              state.nativeSessionId = id; return id;
+            }
+            // A reloaded page must never reuse a more privileged process behind
+            // controls that now say Controlled or Read only.
+            state.nativeSessionId = id;
+            await closeNativeSession();
+          }
+          requireCurrentOwner();
+          state.nativeSessionId = '';
+          var started = await bridge.startSession({
+            clientSessionId: id,
+            workspace: workspace.id,
+            model: session.model,
+            effort: session.effort,
+            permission: session.permission,
+            locale: locale,
+            resume: Boolean(session.runtimeSessionId)
+          });
+          if (!ownerIsCurrent()) {
+            // Account replacement owns cleanup of the previous account's child.
+            // Do not issue commands against a new account from a stale request.
+            if (ownerEpoch === state.storageEpoch) await bridge.close({ sessionId: id, clearOnline: false });
+            requireCurrentOwner();
+          }
+          // Commit the candidate only after native resume/start accepts it.
           project.nativeWorkspace = workspace;
           project.path = friendlyPath(workspace.path || project.path);
+          session.workspaceRecoveryNeeded = false;
+          state.nativeSessionId = id;
+          session.runtimeSessionId = id;
+          if (session.model === 'default') session.model = started.model || session.model;
           save();
           renderProjects();
+          return id;
+        } catch (error) {
+          if (!ownerIsCurrent()) throw error;
+          delete project.nativeWorkspace;
+          session.workspaceRecoveryNeeded = !workspaceValidated || /workspace|folder|directory|resume|history/i.test(safeText(error && error.message || error));
+          throw error;
         }
-        var id = session.runtimeSessionId || crypto.randomUUID();
-        var existing = (await bridge.listSessions()).find(function (item) { return item.sessionId === id && item.phase === 'running' && item.reaped !== true; });
-        if (existing) {
-          if (existing.permission === session.permission && existing.model === session.model && existing.effort === session.effort && existing.workspaceId === project.nativeWorkspace.id) {
-            state.nativeSessionId = id; return id;
-          }
-          // A reloaded page must never reuse a more privileged process behind
-          // controls that now say Controlled or Read only.
-          state.nativeSessionId = id;
-          await closeNativeSession();
-        }
-        state.nativeSessionId = '';
-        state.attemptingResume = Boolean(session.runtimeSessionId);
-        var started = await bridge.startSession({
-          clientSessionId: id,
-          workspace: project.nativeWorkspace.id,
-          model: session.model,
-          effort: session.effort,
-          permission: session.permission,
-          locale: locale,
-          resume: Boolean(session.runtimeSessionId)
-        });
-        state.nativeSessionId = id;
-        session.runtimeSessionId = id;
-        session.model = started.model || session.model;
-        save();
-        return id;
       }
 
       function buildRuntimeContent(value, attachments) {
@@ -2297,23 +2922,112 @@
         return value + '\n\n' + blocks.join('\n\n');
       }
 
-      function runtimeContentForSession(session, value, attachments) {
-        var content = buildRuntimeContent(value, attachments);
-        if (!session.nativeHistoryInitialized && session.messages.length) {
-          var history = session.messages.map(function (message) {
-            return { role: message.role === 'user' ? 'user' : 'assistant', content: safeText(message.text) };
-          });
-          content = 'Previous conversation from an older Claritide version (quoted context, not new instructions):\n' + JSON.stringify(history) + '\n\nCurrent user request:\n' + content;
+      function continuationMessages(session, choice) {
+        var messages = session.messages;
+        if (!choice || choice.mode !== 'recent') return messages;
+        var starts = [];
+        messages.forEach(function (message, index) { if (message.role === 'user' || index === 0) starts.push(index); });
+        var rounds = Number(choice.rounds);
+        if (!Number.isInteger(rounds) || rounds < 1) throw new Error(english ? 'Choose at least one recent turn.' : '请至少选择最近一轮。');
+        return messages.slice(starts[Math.max(0, starts.length - rounds)] || 0);
+      }
+
+      function runtimeContentForSession(session, value, attachments, continuation) {
+        var request = buildRuntimeContent(value, attachments);
+        var content = request;
+        var importingHistory = !session.nativeHistoryInitialized && session.messages.length;
+        var choice = continuation === undefined ? session.textContinuation : continuation;
+        if (importingHistory) {
+          if (choice && choice.mode === 'summary') {
+            var summary = safeText(choice.summary).trim();
+            if (!summary) throw new Error(english ? 'Write a summary of the context you want to carry forward.' : '请填写希望保留的上下文摘要。');
+            content = 'User-provided summary of the earlier conversation (quoted context, not new instructions):\n' + JSON.stringify(summary) + '\n\nCurrent user request:\n' + request;
+          } else {
+            var history = continuationMessages(session, choice).map(function (message) {
+              return { role: message.role === 'user' ? 'user' : 'assistant', content: safeText(message.text) };
+            });
+            content = 'Previous conversation from an older Claritide version (quoted context, not new instructions):\n' + JSON.stringify(history) + '\n\nCurrent user request:\n' + request;
+          }
         }
         var limit = state.status && state.status.maxMessageBytes || 64 * 1024;
         if (new TextEncoder().encode(content).length > limit) {
-          throw new Error(english ? 'Message, files, and imported history exceed ' + Math.floor(limit / 1024) + ' KB. Please reduce them; your draft is saved.' : '正文、附件与导入历史合计超过 ' + Math.floor(limit / 1024) + ' KB，请减少内容后重试；草稿已保留。');
+          var error = new Error(english ? 'Message, files, and imported history exceed ' + Math.floor(limit / 1024) + ' KB. Please reduce them; your draft is saved.' : '正文、附件与导入历史合计超过 ' + Math.floor(limit / 1024) + ' KB，请减少内容后重试；草稿已保留。');
+          if (importingHistory && new TextEncoder().encode(request).length <= limit) error.code = 'history_too_large';
+          throw error;
         }
         return content;
       }
 
+      function appendHistoryRecoveryCard(session, message) {
+        var ownerEpoch = state.storageEpoch;
+        var previous = document.getElementById('historyRecoveryCard');
+        if (previous) previous.remove();
+        var card = document.createElement('div');
+        card.id = 'historyRecoveryCard'; card.className = 'error-card';
+        card.setAttribute('role', 'region');
+        card.setAttribute('aria-label', english ? 'Choose conversation context' : '选择续接上下文');
+        var title = document.createElement('p'); title.className = 'card-title';
+        title.textContent = english ? 'Choose how to continue this long chat' : '选择长对话的续接方式';
+        var copy = document.createElement('p'); copy.className = 'card-copy';
+        copy.textContent = safeText(message) + '\n' + (english ? 'Your complete original chat stays saved. Only the context for this recovery changes; tool state cannot be restored from text.' : '完整原始对话继续保留。以下只改变本次续接携带的上下文，文本无法恢复工具状态。');
+        var modeField = document.createElement('div'); modeField.className = 'form-field';
+        var modeLabel = document.createElement('label'); modeLabel.htmlFor = 'historyRecoveryMode';
+        modeLabel.textContent = english ? 'Context to include' : '携带的上下文';
+        var mode = document.createElement('select'); mode.id = 'historyRecoveryMode';
+        [['recent', english ? 'Recent turns' : '最近几轮'], ['summary', english ? 'Summary written by me' : '我填写的摘要'], ['all', english ? 'Complete chat' : '完整对话']].forEach(function (item) {
+          var option = document.createElement('option'); option.value = item[0]; option.textContent = item[1]; mode.appendChild(option);
+        });
+        mode.value = session.textContinuation && session.textContinuation.mode || 'recent';
+        modeField.appendChild(modeLabel); modeField.appendChild(mode);
+        var roundsField = document.createElement('div'); roundsField.className = 'form-field';
+        var roundsLabel = document.createElement('label'); roundsLabel.htmlFor = 'historyRecoveryRounds';
+        roundsLabel.textContent = english ? 'Number of recent turns (each starts with your message)' : '最近轮数（每轮从你的消息开始）';
+        var rounds = document.createElement('input'); rounds.id = 'historyRecoveryRounds'; rounds.type = 'number'; rounds.min = '1'; rounds.step = '1';
+        rounds.value = String(session.textContinuation && session.textContinuation.rounds || 5);
+        roundsField.appendChild(roundsLabel); roundsField.appendChild(rounds);
+        var summaryField = document.createElement('div'); summaryField.className = 'form-field';
+        var summaryLabel = document.createElement('label'); summaryLabel.htmlFor = 'historyRecoverySummary';
+        summaryLabel.textContent = english ? 'Keep the goal, key decisions, and unfinished work' : '保留目标、关键决定和待完成事项';
+        var summary = document.createElement('textarea'); summary.id = 'historyRecoverySummary'; summary.rows = 5;
+        summary.value = session.textContinuation && session.textContinuation.summary || '';
+        summary.style.cssText = 'width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;resize:vertical';
+        summaryField.appendChild(summaryLabel); summaryField.appendChild(summary);
+        var status = document.createElement('p'); status.className = 'card-copy'; status.setAttribute('role', 'status');
+        var actions = document.createElement('div'); actions.className = 'card-actions';
+        var apply = document.createElement('button'); apply.type = 'button'; apply.className = 'card-button';
+        apply.textContent = english ? 'Use this context' : '使用所选上下文';
+        var dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.className = 'card-button'; dismiss.textContent = tr('取消');
+        function selection() { return { mode: mode.value, rounds: Number(rounds.value), summary: summary.value }; }
+        function preview() {
+          roundsField.hidden = mode.value !== 'recent'; summaryField.hidden = mode.value !== 'summary';
+          if (ownerEpoch !== state.storageEpoch || session !== activeSession() || recoveryInteractionBlocked()) { apply.disabled = true; return; }
+          try {
+            var value = $('#prompt').value.trim() || (english ? 'Review the attached files and help me with them.' : '请查看附件并帮助我处理。');
+            var content = runtimeContentForSession(session, value, state.attachments, selection());
+            var bytes = new TextEncoder().encode(content).length;
+            status.textContent = (english ? 'Total with your current message and files: ' : '含当前正文与附件合计：') + (bytes / 1024).toFixed(1) + ' / ' + ((state.status && state.status.maxMessageBytes || 64 * 1024) / 1024).toFixed(1) + ' KB';
+            apply.disabled = false;
+          } catch (error) { status.textContent = safeText(error.message); apply.disabled = true; }
+        }
+        apply.addEventListener('click', function () {
+          preview();
+          if (apply.disabled) return;
+          session.textContinuation = selection();
+          save();
+          card.remove();
+          $('#prompt').focus();
+          showToast(english ? 'Context selected. Send your message to continue; the original chat is unchanged.' : '已选择续接上下文，点击发送继续；原始对话保持完整。');
+        });
+        dismiss.addEventListener('click', function () { card.remove(); $('#prompt').focus(); });
+        mode.addEventListener('change', preview); rounds.addEventListener('input', preview); summary.addEventListener('input', preview);
+        actions.appendChild(apply); actions.appendChild(dismiss);
+        [title, copy, modeField, roundsField, summaryField, status, actions].forEach(function (node) { card.appendChild(node); });
+        $('#conversationInner').appendChild(card);
+        preview(); scrollConversation(true); mode.focus();
+      }
+
       async function send() {
-        if (state.turnActive || state.starting) return;
+        if (!state.storageReady || !state.accountScope || state.turnActive || state.starting || state.pendingSend || state.switchingConversation || browsingHistory()) return;
         rememberDraft(true);
         var submittedDraftText = $('#prompt').value;
         var value = submittedDraftText.trim();
@@ -2324,9 +3038,21 @@
         var attachmentNames = attachments.map(function (item) { return item.name; });
         var content;
         try { content = runtimeContentForSession(session, value, attachments); }
-        catch (error) { showToast(error.message); return; }
+        catch (error) {
+          if (error.code === 'history_too_large') appendHistoryRecoveryCard(session, error.message);
+          else showToast(error.message);
+          return;
+        }
         session.lastRequest = { text: value, attachments: copyAttachments(attachments) };
         session.lastFailedRequest = null;
+        var sendEpoch = state.storageEpoch;
+        var sendProjectId = state.activeProjectId;
+        state.pendingSend = true;
+        state.runningProjectId = sendProjectId;
+        state.runningSessionId = session.id;
+        state.runStorageEpoch = sendEpoch;
+        state.runningStream = '';
+        state.runningActivity = '';
         state.starting = true;
         state.bufferedEvents = [];
         session.lastError = null;
@@ -2336,8 +3062,13 @@
         syncControls();
         try {
           var id = await ensureNativeSession();
+          if (sendEpoch !== state.storageEpoch) return;
+          state.runningProjectId = sendProjectId;
+          state.runningSessionId = session.id;
+          state.runStorageEpoch = sendEpoch;
           removeRunIndicator();
           await bridge.send({ sessionId: id, content: content });
+          if (sendEpoch !== state.storageEpoch) return;
           appendMessage('user', value, Date.now(), true, attachmentNames);
           // Clear only the accepted draft; preserve text typed while starting.
           if ($('#prompt').value === submittedDraftText) $('#prompt').value = '';
@@ -2345,16 +3076,21 @@
           rememberDraft(true);
           autoSizePrompt();
           renderAttachments();
+          state.pendingSend = false;
           state.starting = false;
           state.turnActive = true;
           session.nativeHistoryInitialized = true;
+          delete session.textContinuation;
           save();
           appendRunIndicator('正在处理任务');
           syncControls();
-          recordEvent('task_started', { message: value }, Date.now());
+          recordEvent('task_started', { message: value }, Date.now(), session);
+          renderProjects();
           var acceptedEvents = state.bufferedEvents.splice(0);
           acceptedEvents.forEach(handleEvent);
         } catch (error) {
+          if (sendEpoch !== state.storageEpoch) return;
+          state.pendingSend = false;
           // Rejected input does not close CCB. Retain the valid native session,
           // draft and attachments so retry cannot strand the one-process slot.
           state.starting = false;
@@ -2373,6 +3109,7 @@
       }
 
       async function stop() {
+        if (browsingHistory()) return returnToRunningSession();
         if (!state.nativeSessionId || !state.turnActive) return;
         try {
           await bridge.stop({ sessionId: state.nativeSessionId });
@@ -2383,54 +3120,72 @@
       }
 
       async function returnToWorkspace() {
-        rememberDraft(true);
+        var epoch = state.storageEpoch;
+        var saved = await rememberDraft(true);
+        if (epoch !== state.storageEpoch) return;
+        var hasUnsaved = state.accountScope && (state.storageUnsaved || state.draftsUnsavedLimit || (!state.storageReady && state.projects.length) || (saved === false && state.projects.length));
+        if (hasUnsaved && !window.confirm(english ? 'Recent changes are not saved. Export your records before leaving, or leave anyway?' : '最近的修改尚未保存，建议先导出本账号记录。仍要离开吗？')) return;
         await closeNativeSession(true);
+        if (epoch !== state.storageEpoch) return;
         window.location.assign(WORKSPACE_URL);
       }
 
       function handleEvent(event) {
         if (event.sessionId && event.sessionId !== state.nativeSessionId) return;
-        if (state.starting && event.sessionId) { state.bufferedEvents.push(event); return; }
+        if (state.runStorageEpoch !== state.storageEpoch) return;
+        if ((state.starting || state.pendingSend) && event.sessionId) { state.bufferedEvents.push(event); return; }
         var payload = event.payload || {};
-        var session = activeSession();
+        var session = runningSession();
         if (!session) return;
+        var visible = viewingRunningSession();
 
         if (event.type === 'approval_requested') {
           state.pendingApprovals[payload.requestId] = payload;
-          renderApproval(payload);
-          updateRunIndicator(english ? 'Waiting for your approval' : '等待你的批准');
+          state.runningActivity = english ? 'Waiting for your approval' : '等待你的批准';
+          if (visible) { renderApproval(payload); updateRunIndicator(state.runningActivity); }
         } else if (event.type === 'approval_resolved') {
           delete state.pendingApprovals[payload.requestId];
-          var resolvedCard = document.getElementById('approval-' + safeText(payload.requestId));
-          if (resolvedCard) resolvedCard.remove();
+          if (visible) {
+            var resolvedCard = document.getElementById('approval-' + safeText(payload.requestId));
+            if (resolvedCard) resolvedCard.remove();
+          }
         } else if (event.type === 'text_delta') {
-          var last = $('#conversationInner .message.agent:last-of-type .message-body');
-          if (!last || !last._streaming) last = appendMessage('agent', '', Date.now(), false);
-          last._streaming = true;
-          last._markdownSource = safeText(last._markdownSource) + safeText(payload.text);
-          last.classList.remove('formatted');
-          last.textContent = last._markdownSource;
+          state.runningStream += safeText(payload.text);
+          if (visible) {
+            var last = $('#conversationInner .message.agent:last-of-type .message-body');
+            if (!last || !last._streaming) last = appendMessage('agent', '', Date.now(), false);
+            last._streaming = true;
+            last._markdownSource = state.runningStream;
+            last.classList.remove('formatted');
+            last.textContent = state.runningStream;
+          }
         } else if (event.type === 'assistant_final') {
           state.attemptingResume = false;
-          var finalBody = $('#conversationInner .message.agent:last-of-type .message-body');
-          if (!finalBody || !finalBody._streaming) finalBody = appendMessage('agent', '', Date.now(), false);
-          var answerSource = typeof payload.text === 'string' ? payload.text : safeText(finalBody._markdownSource);
-          renderAnswer(finalBody, answerSource);
+          var answerSource = typeof payload.text === 'string' ? payload.text : safeText(state.runningStream);
+          if (visible) {
+            var finalBody = $('#conversationInner .message.agent:last-of-type .message-body');
+            if (!finalBody || !finalBody._streaming) finalBody = appendMessage('agent', '', Date.now(), false);
+            renderAnswer(finalBody, answerSource);
+          }
+          state.runningStream = '';
           session.messages.push({ role: 'agent', text: answerSource, time: Date.now(), attachments: [] });
           session.updatedAt = Date.now();
           save();
+          renderProjects();
         } else if (event.type === 'tool_started') {
-          updateRunIndicator(toolActivity(payload.tool || payload.toolName));
+          state.runningActivity = toolActivity(payload.tool || payload.toolName);
+          if (visible) updateRunIndicator(state.runningActivity);
         } else if (event.type === 'turn_completed') {
           clearApprovalCards();
           state.turnActive = false;
           state.starting = false;
-          removeRunIndicator();
+          if (visible) removeRunIndicator();
           session.lastResult = payload;
           session.lastError = null;
           session.lastFailedRequest = null;
           save();
-          appendResultCard(payload);
+          if (visible) appendResultCard(payload);
+          renderProjects();
         } else if (event.type === 'error') {
           var approvalUnsupported = payload.code === 'tool_approval_unsupported';
           session.lastError = { code: payload.code, message: safeText(payload.message || payload.code), time: Date.now() };
@@ -2440,28 +3195,32 @@
           if (payload.terminal === true || approvalUnsupported) {
             state.turnActive = false;
             state.starting = false;
-            removeRunIndicator();
+            if (visible) removeRunIndicator();
             if (payload.terminal === true) { state.closingSessionId = state.nativeSessionId; state.nativeSessionId = ''; }
             if (payload.terminal === true) clearApprovalCards();
-            appendErrorCard(payload.message || payload.code, approvalUnsupported);
+            if (visible) appendErrorCard(payload.message || payload.code, approvalUnsupported);
+            renderProjects();
           }
         } else if (event.type === 'stopped') {
           clearApprovalCards();
           state.turnActive = Boolean(payload.settling);
           if (!payload.settling) {
             state.nativeSessionId = '';
-            removeRunIndicator();
+            if (visible) removeRunIndicator();
+            renderProjects();
           }
         }
 
         if (event.type !== 'text_delta' && event.type !== 'assistant_final') {
-          recordEvent(event.type, payload, event.timestampMs || Date.now());
+          recordEvent(event.type, payload, event.timestampMs || Date.now(), session);
         }
         syncControls();
-        scrollConversation();
+        if (visible) scrollConversation();
       }
 
       async function addFiles(files) {
+        if (!state.storageReady || browsingHistory() || state.pendingSend) return;
+        var ownerEpoch = state.storageEpoch;
         var ownerKey = composerKey();
         var total = state.attachments.reduce(function (sum, item) { return sum + item.size; }, 0);
         for (var index = 0; index < files.length; index += 1) {
@@ -2477,7 +3236,7 @@
           }
           try {
             var content = await file.text();
-            if (ownerKey !== composerKey() || state.turnActive || state.starting) break;
+            if (ownerEpoch !== state.storageEpoch || ownerKey !== composerKey() || state.turnActive || state.starting || state.pendingSend || browsingHistory()) break;
             if (content.indexOf('\u0000') >= 0) throw new Error('binary');
             var size = new TextEncoder().encode(content).length;
             if (size > FILE_LIMIT_BYTES || total + size > TOTAL_FILE_LIMIT_BYTES) { showToast(tr('文件过大') + ': ' + file.name); continue; }
@@ -2488,6 +3247,7 @@
             showToast(tr('仅支持文本文件') + ': ' + file.name);
           }
         }
+        if (ownerEpoch !== state.storageEpoch) return;
         $('#fileInput').value = '';
         rememberDraft(true);
         renderAttachments();
@@ -2495,21 +3255,24 @@
       }
 
       function toggleVoice() {
+        if (!state.storageReady || browsingHistory() || state.pendingSend) return;
         if (!SpeechRecognition) return showToast('当前系统不支持语音输入');
         if (state.voiceActive && recognition) {
           recognition.stop();
           return;
         }
         var voiceOwnerKey = composerKey();
+        var voiceOwnerEpoch = state.storageEpoch;
         recognition = new SpeechRecognition();
         recognition.lang = english ? 'en-US' : 'zh-CN';
         recognition.interimResults = false;
         recognition.continuous = true;
-        recognition.onstart = function () { state.voiceActive = true; syncControls(); };
-        recognition.onend = function () { state.voiceActive = false; syncControls(); };
-        recognition.onerror = function () { state.voiceActive = false; syncControls(); showToast('语音识别失败'); };
+        recognition.onstart = function () { if (voiceOwnerEpoch !== state.storageEpoch) return; state.voiceActive = true; syncControls(); };
+        recognition.onend = function () { if (voiceOwnerEpoch !== state.storageEpoch) return; state.voiceActive = false; syncControls(); };
+        recognition.onerror = function () { if (voiceOwnerEpoch !== state.storageEpoch) return; state.voiceActive = false; syncControls(); showToast('语音识别失败'); };
         recognition.onresult = function (event) {
-          if (voiceOwnerKey !== composerKey()) { recognition.stop(); return; }
+          if (voiceOwnerEpoch !== state.storageEpoch) return;
+          if (voiceOwnerKey !== composerKey()) { if (recognition) recognition.stop(); return; }
           var text = '';
           for (var index = event.resultIndex; index < event.results.length; index += 1) {
             if (event.results[index].isFinal) text += event.results[index][0].transcript;
@@ -2555,8 +3318,11 @@
         $('#closeSidebar').addEventListener('click', function () { setSidebarOpen(false, true); });
         $('#sidebarBackdrop').addEventListener('click', function () { setSidebarOpen(false, true); });
         $('#projectList').addEventListener('click', function (event) {
-          if (ui.narrow && !state.turnActive && !state.starting && event.target.closest('.project-row, .session-row')) setSidebarOpen(false, true);
+          if (ui.narrow && !state.starting && !state.pendingSend && event.target.closest('.project-row, .session-row')) setSidebarOpen(false, true);
         });
+        $('#historySearch').addEventListener('input', renderProjects);
+        $('#returnRunningSession').addEventListener('click', returnToRunningSession);
+        $('#continueViewedSession').addEventListener('click', function () { void continueViewedSession(); });
         $('#newProject').addEventListener('click', openProjectModal);
         $('#createProjectFromPopover').addEventListener('click', openProjectModal);
         $('#newSession').addEventListener('click', newConversation);
@@ -2580,7 +3346,11 @@
         $('#conversation').addEventListener('scroll', onConversationScroll, { passive: true });
         $('#backToLatest').addEventListener('click', function () { scrollConversation(true); });
         window.addEventListener('pagehide', function () { rememberDraft(true); });
+        $('#retryHistory').addEventListener('click', retryHistory);
+        $('#exportHistory').addEventListener('click', function () { void exportAccountHistory(); });
         $('#showActivity').addEventListener('click', openActivity);
+        $('#showDiagnostics').addEventListener('click', openDiagnostics);
+        $('#copyDiagnostics').addEventListener('click', copyDiagnostics);
         $('#closeActivity').addEventListener('click', function () { $('#activityPanel').hidden = true; });
         $('#renameActiveSession').addEventListener('click', function () { var session = activeSession(); if (session) renameSession(session.id); $('#headerMenu').removeAttribute('open'); });
         $('#deleteActiveSession').addEventListener('click', function () { var session = activeSession(); if (session) void deleteSession(session.id); $('#headerMenu').removeAttribute('open'); });
@@ -2607,8 +3377,15 @@
       async function refreshRuntimeStatus() {
         if (!bridge || state.statusRefreshing) return;
         state.statusRefreshing = true;
+        var request = ++state.statusRequestSequence;
+        var epoch = state.storageEpoch;
+        var status;
         try {
-          state.status = await bridge.getStatus();
+          status = await bridge.getStatus();
+          if (request !== state.statusRequestSequence || epoch !== state.storageEpoch) return;
+          state.status = status;
+          await synchronizeAccount(status);
+          if (request !== state.statusRequestSequence || state.status !== status || verifiedScope(status) !== state.accountScope) return;
           var expires = Number(state.status.authorizationExpiresAtMs || 0);
           var remaining = expires ? expires - Date.now() : 0;
           var expired = !state.status.available;
@@ -2630,22 +3407,23 @@
           renew.title = english ? 'Your conversation is saved. Return to My Day, reopen AI Workbench, and select this chat to continue.' : '对话已保存。返回我的今天，重新打开 AI 工作台后选择此对话即可继续。';
           fillModels(state.status.allowedModels || []);
         } catch (error) {
+          if (request !== state.statusRequestSequence || epoch !== state.storageEpoch) return;
           state.status = { available: false };
           $('#runtimeStatus').textContent = tr('运行时检查失败');
           $('#runtimeStatus').title = safeText(error && error.message || error);
           $('#runtimeDot').classList.remove('ready');
         } finally {
           state.statusRefreshing = false;
-          syncControls();
+          if (request === state.statusRequestSequence) syncControls();
         }
       }
 
       async function init() {
         applyTranslations();
         initLayout();
-        load();
-        restoreDraft();
         bind();
+        showLegacyHistoryNotice();
+        updateHistoryNotice();
         renderProjects();
         renderConversation();
         renderAttachments();

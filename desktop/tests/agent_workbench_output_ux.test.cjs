@@ -83,6 +83,8 @@ function harness(options = {}) {
   const api = context.window.testApi;
   const session = { id: 'chat', messages: [], events: [] };
   api.state.projects = [{ id: 'project', path: '/project', sessions: [session] }];
+  api.state.storageReady = true; api.state.accountScope = 'acct_test'; api.state.storageEpoch = 1;
+  api.state.runningProjectId = 'project'; api.state.runningSessionId = 'chat'; api.state.runStorageEpoch = 1;
   api.state.activeProjectId = 'project'; api.state.activeSessionId = 'chat'; api.state.nativeSessionId = 'native';
   return { ...api, session, document, copied, toasts, decisions, navigation, host: document.querySelector('#conversationInner') };
 }

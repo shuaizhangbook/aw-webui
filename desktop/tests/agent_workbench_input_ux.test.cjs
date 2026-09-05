@@ -6,8 +6,8 @@ const { randomUUID } = require('node:crypto');
 
 const html = fs.readFileSync(process.env.CLARITIDE_AGENT_HTML_PATH, 'utf8');
 const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)][0][1];
-const projectKey = 'claritide.agent.projects.v2';
-const draftKey = 'claritide.agent.composer.v1';
+const projectKey = 'test.account.projects';
+const draftKey = 'test.account.composer';
 
 function harness(options = {}) {
   const elements = new Map();
@@ -66,6 +66,13 @@ function harness(options = {}) {
     { id: 'project-b', name: 'B', path: '/b', nativeWorkspace: { id: 'workspace-b', path: '/b' }, sessions: [session('chat-c')] },
   ];
   api.state.activeProjectId = 'project-a'; api.state.activeSessionId = 'chat-a';
+  api.state.storageReady = true; api.state.accountScope = 'acct_test'; api.state.storageEpoch = 1;
+  api.state.storageClient = {
+    async save(projects, composer) {
+      if (options.storageFailure) throw new Error('QuotaExceededError');
+      storage.set(projectKey, JSON.stringify(projects)); storage.set(draftKey, JSON.stringify(composer));
+    },
+  };
   api.state.status = { available: true, allowedModels: ['gpt-test'], defaultModel: 'gpt-test', maxMessageBytes: 65536 };
   return { ...api, calls, toasts, storage, confirmations, prompt: document.querySelector('#prompt'), element: selector => document.querySelector(selector), flushFrames() { while (frames.length) frames.shift()(); } };
 }
@@ -127,7 +134,7 @@ test('reload restores the last selected chat and drafts without restoring full-a
   h.state.projects[1].sessions[0].permission = 'full';
   h.prompt.value = 'Continue this later'; h.state.attachments = [file('brief.txt', '中文内容')];
   h.rememberDraft(true); h.save();
-  const reloaded = harness({ storage: h.storage }); reloaded.load(); reloaded.restoreDraft();
+  const reloaded = harness({ storage: h.storage }); reloaded.load({ projects: JSON.parse(h.storage.get(projectKey)), composer: JSON.parse(h.storage.get(draftKey)) }); reloaded.restoreDraft();
   assert.equal(reloaded.state.activeProjectId, 'project-b'); assert.equal(reloaded.state.activeSessionId, 'chat-c');
   assert.equal(reloaded.prompt.value, 'Continue this later'); assert.deepEqual(plain(reloaded.state.attachments), [file('brief.txt', '中文内容')]);
   assert.equal(reloaded.state.projects[1].sessions[0].permission, 'controlled');
@@ -165,17 +172,20 @@ test('declining retry replacement preserves the current draft', () => {
   assert.equal(h.prompt.value, 'New important text');
 });
 
-test('storage errors do not fail an accepted send or erase live drafts and surface once', async () => {
+test('storage errors do not fail an accepted send or erase live drafts and stay visibly recoverable', async () => {
   const h = harness({ storageFailure: true }); h.prompt.value = 'Keep working';
   await h.send();
   assert.equal(h.state.turnActive, true); assert.equal(h.prompt.value, '');
   assert.equal(h.state.projects[0].sessions[0].lastError, null);
-  h.prompt.value = 'Unsaved next task'; h.rememberDraft(true); h.save();
-  assert.equal(h.prompt.value, 'Unsaved next task'); assert.equal(h.toasts.filter(text => /Local saving/.test(text)).length, 1);
+  h.prompt.value = 'Unsaved next task'; await h.rememberDraft(true); h.save(); await h.state.storagePending;
+  assert.equal(h.prompt.value, 'Unsaved next task');
+  assert.equal(h.element('#storageNotice').hidden, false);
+  assert.match(h.element('#storageNoticeText').textContent, /not saved/);
+  assert.equal(h.element('#exportHistory').hidden, false);
 });
 
 test('malformed stored drafts do not invalidate existing chats and oversized text remains live', () => {
-  const h = harness(); h.save(); h.storage.set(draftKey, '{bad json'); h.load();
+  const h = harness(); h.save(); h.load({ projects: JSON.parse(h.storage.get(projectKey)), composer: '{bad json' });
   assert.equal(h.state.projects.length, 2);
   h.prompt.value = '中'.repeat(100000); h.rememberDraft(true);
   assert.equal(h.prompt.value.length, 100000); assert.equal(Object.keys(JSON.parse(h.storage.get(draftKey)).drafts).length, 0);

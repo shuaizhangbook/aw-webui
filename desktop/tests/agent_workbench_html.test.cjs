@@ -22,7 +22,7 @@ test('native startup is acknowledged after rendering and the first runtime statu
     async refreshRuntimeStatus() { calls.push('status'); await status; },
     window: { setInterval() {} },
   };
-  for (const name of ['applyTranslations', 'initLayout', 'load', 'restoreDraft', 'bind', 'renderProjects', 'renderConversation', 'renderAttachments', 'renderActivity', 'syncControls']) {
+  for (const name of ['applyTranslations', 'initLayout', 'load', 'restoreDraft', 'bind', 'showLegacyHistoryNotice', 'updateHistoryNotice', 'renderProjects', 'renderConversation', 'renderAttachments', 'renderActivity', 'syncControls']) {
     context[name] = () => { calls.push(name); };
   }
   vm.runInNewContext(initSource + '\nthis.startup = init();', context);

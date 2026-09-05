@@ -36,6 +36,7 @@ function harness(narrow = false, platform = 'Win32') {
     closeMenus = closeControlPopovers = syncControls = function () {};
     window.api = { ui, state, initLayout, setSidebarOpen, openModal, closeModal, handleGlobalKeydown, renderWelcome, calls };
   `), context);
+  context.window.api.state.storageReady = true; context.window.api.state.accountScope = 'acct_test';
   return { ...context.window.api, document, node: document.querySelector, makeNode, media };
 }
 
