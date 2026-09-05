@@ -621,8 +621,8 @@
       var WORKSPACE_URL = 'https://watch.sding.me/admin/my-day/?desktop=1';
       var STORAGE_KEY = 'claritide.agent.projects.v2';
       var LEGACY_STORAGE_KEY = 'claritide.agent.projects.v1';
-      var FILE_LIMIT_BYTES = 512 * 1024;
-      var TOTAL_FILE_LIMIT_BYTES = 1024 * 1024;
+      var FILE_LIMIT_BYTES = 64 * 1024;
+      var TOTAL_FILE_LIMIT_BYTES = 64 * 1024;
       var EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
       var locale = new URLSearchParams(window.location.search).get('locale') === 'en' ? 'en' : 'zh-CN';
       var english = locale === 'en';
@@ -750,6 +750,9 @@
         lastSubmittedText: '',
         voiceActive: false
       };
+      state.pendingApprovals = {};
+      state.bufferedEvents = [];
+      state.closingPromise = Promise.resolve();
 
       var $ = function (selector, root) { return (root || document).querySelector(selector); };
       var $$ = function (selector, root) { return Array.prototype.slice.call((root || document).querySelectorAll(selector)); };
@@ -1162,10 +1165,76 @@
         details.textContent = tr('查看详情');
         details.addEventListener('click', openActivity);
         actions.appendChild(retry);
+        if (state.attemptingResume) {
+          var recover = document.createElement('button');
+          recover.type = 'button'; recover.className = 'card-button';
+          recover.textContent = english ? 'Continue with saved chat text' : '使用保存文本续接';
+          recover.addEventListener('click', async function () {
+            var session = activeSession();
+            if (!session) return;
+            await closeNativeSession();
+            delete session.runtimeSessionId;
+            session.nativeHistoryInitialized = false;
+            state.attemptingResume = false;
+            if (!$('#prompt').value) $('#prompt').value = state.lastSubmittedText;
+            save(); syncControls();
+            showToast(english ? 'Native history could not be restored. Your next message will include the saved chat text; tool state cannot be recovered.' : '原生记录未能恢复。下次发送会带上保存的聊天文本，工具状态无法恢复。');
+            recover.disabled = true;
+          });
+          actions.appendChild(recover);
+        }
         actions.appendChild(details);
         card.appendChild(title);
         card.appendChild(copy);
         card.appendChild(actions);
+        $('#conversationInner').appendChild(card);
+        scrollConversation();
+      }
+
+      function clearApprovalCards() {
+        state.pendingApprovals = {};
+        $$('[data-approval-id]').forEach(function (card) { card.remove(); });
+      }
+
+      function renderApproval(approval) {
+        var id = 'approval-' + safeText(approval.requestId);
+        if (document.getElementById(id)) return;
+        var card = document.createElement('section');
+        card.id = id;
+        card.className = 'approval-card';
+        card.setAttribute('data-approval-id', approval.requestId);
+        card.setAttribute('role', 'group');
+        card.setAttribute('aria-label', english ? 'Operation approval' : '操作审批');
+        var title = document.createElement('p');
+        title.className = 'card-title';
+        title.textContent = (english ? 'Allow this operation? · ' : '允许此操作？· ') + safeText(approval.tool);
+        var detail = document.createElement('pre');
+        detail.style.cssText = 'max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere';
+        detail.textContent = JSON.stringify(approval.input, null, 2);
+        var explanation = document.createElement('p');
+        explanation.className = 'card-copy';
+        explanation.textContent = english ? 'Session approval applies only to this exact tool and input. Different commands or paths will ask again.' : '本会话授权仅适用于此工具的相同操作；命令或路径改变时仍会询问。';
+        var actions = document.createElement('div');
+        actions.className = 'card-actions';
+        var sessionId = state.nativeSessionId;
+        [['allow_once', english ? 'Allow once' : '允许一次'], ['allow_session', english ? 'Allow this operation for this session' : '本会话允许此操作'], ['deny', english ? 'Decline' : '拒绝']].forEach(function (choice) {
+          var button = document.createElement('button');
+          button.type = 'button'; button.className = 'card-button'; button.textContent = choice[1];
+          button.addEventListener('click', async function () {
+            $$('.card-button', card).forEach(function (item) { item.disabled = true; });
+            try {
+              await bridge.respondToApproval({ sessionId: sessionId, requestId: approval.requestId, decision: choice[0] });
+              delete state.pendingApprovals[approval.requestId];
+              card.remove();
+              updateRunIndicator('正在处理任务');
+            } catch (error) {
+              explanation.textContent = safeText(error && error.message || error);
+              $$('.card-button', card).forEach(function (item) { item.disabled = false; });
+            }
+          });
+          actions.appendChild(button);
+        });
+        card.appendChild(title); card.appendChild(detail); card.appendChild(explanation); card.appendChild(actions);
         $('#conversationInner').appendChild(card);
         scrollConversation();
       }
@@ -1277,16 +1346,17 @@
         var current = currentModel();
         select.textContent = '';
         var values = models.length ? models.slice() : ['default'];
-        if (values.indexOf('default') < 0) values.unshift('default');
         values.forEach(function (model) {
           var option = document.createElement('option');
           option.value = model;
           option.textContent = modelLabel(model);
           select.appendChild(option);
         });
-        if (values.indexOf(current) < 0) current = values[0];
+        if (values.indexOf(current) < 0) current = state.status && values.indexOf(state.status.defaultModel) >= 0 ? state.status.defaultModel : values[0];
         select.value = current;
         state.draftModel = current;
+        var session = activeSession();
+        if (session && values.indexOf(session.model) < 0) { session.model = current; save(); }
       }
 
       function renderAttachments() {
@@ -1326,7 +1396,9 @@
         $('#permissionButton').disabled = !projectReady || locked || busy;
         $('#modelEffortButton').disabled = !projectReady || locked || busy;
         $('#modelSelect').disabled = locked || busy;
-        $('#effortRange').disabled = locked || busy;
+        var effortSupported = Boolean(state.status && state.status.capabilities && state.status.capabilities.effort);
+        $('#effortRange').disabled = locked || busy || !effortSupported;
+        $('#effortRange').title = effortSupported ? '' : (english ? 'This gateway does not advertise thinking-depth support.' : '当前网关未声明支持思考深度。');
         $('#voiceButton').disabled = !projectReady || !runtimeReady || !SpeechRecognition || busy;
         $('#voiceButton').title = !SpeechRecognition ? tr('当前系统不支持语音输入') : tr('语音输入');
 
@@ -1339,7 +1411,7 @@
         $('#sessionMeta').textContent = project ? friendlyPath(project.path) : '';
         $('#projectButton').textContent = project ? project.name : tr('选择项目');
         $('#permissionLabel').textContent = permissionLabel(currentPermission());
-        $('#modelEffortLabel').textContent = modelLabel(currentModel()) + ' · ' + effortLabel(currentEffort());
+        $('#modelEffortLabel').textContent = modelLabel(currentModel()) + (effortSupported ? ' · ' + effortLabel(currentEffort()) : '');
         $('#modelSelect').value = currentModel();
         $('#effortRange').value = String(Math.max(0, EFFORT_LEVELS.indexOf(currentEffort())));
         $('#effortValue').textContent = effortLabel(currentEffort());
@@ -1357,18 +1429,35 @@
       }
 
       async function closeNativeSession(clearOnline) {
-        var id = state.nativeSessionId;
+        var id = state.nativeSessionId || state.closingSessionId;
+        state.closingSessionId = id;
         state.nativeSessionId = '';
         state.turnActive = false;
         state.starting = false;
-        if (bridge && (id || clearOnline)) {
-          try {
+        state.pendingApprovals = {};
+        var previous = state.closingPromise;
+        var operation = (async function () {
+          await previous;
+          if (bridge && (id || clearOnline)) {
             await bridge.close({
               sessionId: id || null,
               clearOnline: clearOnline === true
             });
-          } catch (_error) {}
-        }
+            if (id) {
+              for (var attempt = 0; attempt < 45; attempt += 1) {
+                var sessions = await bridge.listSessions();
+                var pending = sessions.find(function (item) { return item.sessionId === id && (item.reaped === false || item.phase === 'running' || item.phase === 'closing'); });
+                if (!pending) { state.closingSessionId = ''; return; }
+                await new Promise(function (resolve) { window.setTimeout(resolve, 100); });
+              }
+              throw new Error(english ? 'The previous task is still closing. Please retry.' : '上一个任务仍在关闭，请稍后重试。');
+            }
+          }
+        })();
+        // Keep the queue recoverable, but propagate this operation's failure to
+        // callers. A later send retries cleanup before starting another child.
+        state.closingPromise = operation.catch(function (error) { showToast(safeText(error && error.message || error)); });
+        return operation;
       }
 
       function selectProject(projectId) {
@@ -1618,7 +1707,8 @@
       }
 
       async function ensureNativeSession() {
-        if (state.nativeSessionId) return state.nativeSessionId;
+        await state.closingPromise;
+        if (state.closingSessionId) await closeNativeSession();
         var project = activeProject();
         var session = activeSession();
         if (!project || !session) throw new Error(tr('选择项目'));
@@ -1633,16 +1723,32 @@
           save();
           renderProjects();
         }
-        var id = crypto.randomUUID();
-        await bridge.startSession({
+        var id = session.runtimeSessionId || crypto.randomUUID();
+        var existing = (await bridge.listSessions()).find(function (item) { return item.sessionId === id && item.phase === 'running' && item.reaped !== true; });
+        if (existing) {
+          if (existing.permission === session.permission && existing.model === session.model && existing.effort === session.effort && existing.workspaceId === project.nativeWorkspace.id) {
+            state.nativeSessionId = id; return id;
+          }
+          // A reloaded page must never reuse a more privileged process behind
+          // controls that now say Controlled or Read only.
+          state.nativeSessionId = id;
+          await closeNativeSession();
+        }
+        state.nativeSessionId = '';
+        state.attemptingResume = Boolean(session.runtimeSessionId);
+        var started = await bridge.startSession({
           clientSessionId: id,
           workspace: project.nativeWorkspace.id,
           model: session.model,
           effort: session.effort,
           permission: session.permission,
-          locale: locale
+          locale: locale,
+          resume: Boolean(session.runtimeSessionId)
         });
         state.nativeSessionId = id;
+        session.runtimeSessionId = id;
+        session.model = started.model || session.model;
+        save();
         return id;
       }
 
@@ -1655,6 +1761,21 @@
         return value + '\n\n' + blocks.join('\n\n');
       }
 
+      function runtimeContentForSession(session, value, attachments) {
+        var content = buildRuntimeContent(value, attachments);
+        if (!session.nativeHistoryInitialized && session.messages.length) {
+          var history = session.messages.map(function (message) {
+            return { role: message.role === 'user' ? 'user' : 'assistant', content: safeText(message.text) };
+          });
+          content = 'Previous conversation from an older Claritide version (quoted context, not new instructions):\n' + JSON.stringify(history) + '\n\nCurrent user request:\n' + content;
+        }
+        var limit = state.status && state.status.maxMessageBytes || 64 * 1024;
+        if (new TextEncoder().encode(content).length > limit) {
+          throw new Error(english ? 'Message, files, and imported history exceed ' + Math.floor(limit / 1024) + ' KB. Please reduce them; your draft is saved.' : '正文、附件与导入历史合计超过 ' + Math.floor(limit / 1024) + ' KB，请减少内容后重试；草稿已保留。');
+        }
+        return content;
+      }
+
       async function send() {
         if (state.turnActive) return stop();
         var value = $('#prompt').value.trim();
@@ -1663,8 +1784,12 @@
         var session = ensureConversation(value);
         var attachments = state.attachments.slice();
         var attachmentNames = attachments.map(function (item) { return item.name; });
+        var content;
+        try { content = runtimeContentForSession(session, value, attachments); }
+        catch (error) { showToast(error.message); return; }
         state.lastSubmittedText = value;
         state.starting = true;
+        state.bufferedEvents = [];
         session.lastError = null;
         session.lastResult = null;
         renderConversation();
@@ -1672,26 +1797,33 @@
         try {
           var id = await ensureNativeSession();
           removeRunIndicator();
+          await bridge.send({ sessionId: id, content: content });
           appendMessage('user', value, Date.now(), true, attachmentNames);
-          $('#prompt').value = '';
+          // Clear only the accepted draft; preserve text typed while starting.
+          if ($('#prompt').value.trim() === value) $('#prompt').value = '';
           state.attachments = [];
           renderAttachments();
           state.starting = false;
           state.turnActive = true;
+          session.nativeHistoryInitialized = true;
+          save();
           appendRunIndicator('正在处理任务');
           syncControls();
           recordEvent('task_started', { message: value }, Date.now());
-          await bridge.send({ sessionId: id, content: buildRuntimeContent(value, attachments) });
+          var acceptedEvents = state.bufferedEvents.splice(0);
+          acceptedEvents.forEach(handleEvent);
         } catch (error) {
-          state.nativeSessionId = '';
+          // Rejected input does not close CCB. Retain the valid native session,
+          // draft and attachments so retry cannot strand the one-process slot.
           state.starting = false;
           state.turnActive = false;
+          state.bufferedEvents = [];
           removeRunIndicator();
           var message = safeText(error && error.message || error);
-          session.lastError = { code: 'start_failed', message: message, time: Date.now() };
+          session.lastError = { code: state.nativeSessionId ? 'send_failed' : 'start_failed', message: message, time: Date.now() };
           save();
           appendErrorCard(message, false);
-          recordEvent('error', { code: 'start_failed', message: message, terminal: true }, Date.now());
+          recordEvent('error', { code: session.lastError.code, message: message, terminal: true }, Date.now());
           syncControls();
         }
       }
@@ -1712,16 +1844,26 @@
       }
 
       function handleEvent(event) {
-        if (state.nativeSessionId && event.sessionId && event.sessionId !== state.nativeSessionId) return;
+        if (event.sessionId && event.sessionId !== state.nativeSessionId) return;
+        if (state.starting && event.sessionId) { state.bufferedEvents.push(event); return; }
         var payload = event.payload || {};
         var session = activeSession();
         if (!session) return;
 
-        if (event.type === 'text_delta') {
+        if (event.type === 'approval_requested') {
+          state.pendingApprovals[payload.requestId] = payload;
+          renderApproval(payload);
+          updateRunIndicator(english ? 'Waiting for your approval' : '等待你的批准');
+        } else if (event.type === 'approval_resolved') {
+          delete state.pendingApprovals[payload.requestId];
+          var resolvedCard = document.getElementById('approval-' + safeText(payload.requestId));
+          if (resolvedCard) resolvedCard.remove();
+        } else if (event.type === 'text_delta') {
           var last = $('#conversationInner .message.agent:last-of-type .message-body');
           if (!last) last = appendMessage('agent', '', Date.now(), false);
           last.textContent = safeText(last.textContent) + safeText(payload.text);
         } else if (event.type === 'assistant_final') {
+          state.attemptingResume = false;
           var finalBody = $('#conversationInner .message.agent:last-of-type .message-body');
           if (!finalBody) finalBody = appendMessage('agent', '', Date.now(), false);
           finalBody.textContent = safeText(payload.text || finalBody.textContent);
@@ -1733,6 +1875,7 @@
         } else if (event.type === 'tool_started') {
           updateRunIndicator(toolActivity(payload.tool || payload.toolName));
         } else if (event.type === 'turn_completed') {
+          clearApprovalCards();
           state.turnActive = false;
           state.starting = false;
           removeRunIndicator();
@@ -1744,14 +1887,17 @@
           var approvalUnsupported = payload.code === 'tool_approval_unsupported';
           session.lastError = { code: payload.code, message: safeText(payload.message || payload.code), time: Date.now() };
           save();
+          if (payload.code === 'interrupt_failed') showToast(payload.message || (english ? 'Failed to stop. Please retry.' : '停止失败，请重试。'));
           if (payload.terminal === true || approvalUnsupported) {
             state.turnActive = false;
             state.starting = false;
             removeRunIndicator();
-            if (payload.terminal === true) state.nativeSessionId = '';
+            if (payload.terminal === true) { state.closingSessionId = state.nativeSessionId; state.nativeSessionId = ''; }
+            if (payload.terminal === true) clearApprovalCards();
             appendErrorCard(payload.message || payload.code, approvalUnsupported);
           }
         } else if (event.type === 'stopped') {
+          clearApprovalCards();
           state.turnActive = Boolean(payload.settling);
           if (!payload.settling) {
             state.nativeSessionId = '';
@@ -1775,7 +1921,7 @@
             continue;
           }
           if (total + file.size > TOTAL_FILE_LIMIT_BYTES) {
-            showToast('附件总大小不能超过 1 MB');
+            showToast(english ? 'Files total cannot exceed 64 KB; the message must fit too.' : '附件合计不能超过 64 KB，正文也计入总大小。');
             break;
           }
           try {
@@ -1888,6 +2034,42 @@
         });
       }
 
+      async function refreshRuntimeStatus() {
+        if (!bridge || state.statusRefreshing) return;
+        state.statusRefreshing = true;
+        try {
+          state.status = await bridge.getStatus();
+          var expires = Number(state.status.authorizationExpiresAtMs || 0);
+          var remaining = expires ? expires - Date.now() : 0;
+          var expired = !state.status.available;
+          var needsAuthorization = expired && /sign in|authoriz|expired|online ai/i.test(state.status.lastError || '');
+          var expiring = expires && remaining < 120000;
+          $('#runtimeStatus').textContent = expired ? (needsAuthorization ? (english ? 'AI authorization required' : 'AI 需要重新授权') : tr('Agent 不可用')) : expiring ? (english ? 'AI authorization expires soon' : 'AI 授权即将到期') : tr('Agent 已就绪');
+          $('#runtimeStatus').title = safeText(state.status.lastError || (expires ? (english ? 'Authorization expires: ' : '授权到期：') + new Date(expires).toLocaleTimeString(locale) : ''));
+          $('#runtimeDot').classList.toggle('ready', !expired);
+          var renew = $('#renewAuthorization');
+          if (!renew) {
+            renew = document.createElement('button');
+            renew.id = 'renewAuthorization'; renew.type = 'button'; renew.className = 'text-button';
+            renew.textContent = english ? 'Renew access' : '重新授权';
+            renew.addEventListener('click', returnToWorkspace);
+            $('#runtimeStatus').parentNode.appendChild(renew);
+          }
+          renew.hidden = !needsAuthorization && !expiring;
+          renew.disabled = state.turnActive || state.starting;
+          renew.title = english ? 'Your conversation is saved. Return to My Day, reopen AI Workbench, and select this chat to continue.' : '对话已保存。返回我的今天，重新打开 AI 工作台后选择此对话即可继续。';
+          fillModels(state.status.allowedModels || []);
+        } catch (error) {
+          state.status = { available: false };
+          $('#runtimeStatus').textContent = tr('运行时检查失败');
+          $('#runtimeStatus').title = safeText(error && error.message || error);
+          $('#runtimeDot').classList.remove('ready');
+        } finally {
+          state.statusRefreshing = false;
+          syncControls();
+        }
+      }
+
       async function init() {
         applyTranslations();
         load();
@@ -1902,17 +2084,8 @@
           return;
         }
         bridge.onEvent(handleEvent);
-        try {
-          state.status = await bridge.getStatus();
-          $('#runtimeStatus').textContent = tr(state.status.available ? 'Agent 已就绪' : '运行时未配置');
-          $('#runtimeDot').classList.toggle('ready', Boolean(state.status.available));
-          fillModels(state.status.allowedModels || []);
-        } catch (error) {
-          state.status = { available: false };
-          $('#runtimeStatus').textContent = tr('运行时检查失败');
-          var session = activeSession();
-          if (session) recordEvent('error', { message: safeText(error && error.message || error) }, Date.now());
-        }
+        await refreshRuntimeStatus();
+        window.setInterval(refreshRuntimeStatus, 15000);
         syncControls();
       }
 

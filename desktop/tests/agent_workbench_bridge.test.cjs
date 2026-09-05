@@ -100,12 +100,18 @@ test('event subscription polls normalized events and stops after unsubscribe', a
   assert.equal(harness.cleared, true);
 });
 
-test('resume is explicit unsupported capability', async () => {
-  const harness = loadBridge(async () => null);
-  await assert.rejects(
-    harness.bridge.resume({ sessionId: 'one' }),
-    error => error && error.code === 'unsupported',
-  );
+test('resume and approval use only the existing local command surface', async () => {
+  const calls = [];
+  const harness = loadBridge(async (command, args) => { calls.push([command, args]); });
+  await harness.bridge.resume({ clientSessionId: 'one', workspace: 'opaque' });
+  await harness.bridge.respondToApproval({ sessionId: 'one', requestId: 'approval-one', decision: 'allow_once' });
+  assert.equal(calls[0][0], 'agent_start');
+  assert.equal(calls[0][1].request.resume, true);
+  assert.equal(calls[0][1].request.clientSessionId, 'one');
+  assert.equal(calls[1][0], 'agent_send');
+  assert.equal(calls[1][1].request.approval.decision, 'allow_once');
+  assert.equal(calls[1][1].request.approval.requestId, 'approval-one');
+  assert.equal(calls[1][1].request.content, undefined);
 });
 
 test('bridge does not initialize without Tauri internals', () => {

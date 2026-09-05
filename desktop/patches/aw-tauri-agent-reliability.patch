@@ -1,0 +1,1255 @@
+diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
+index 2c0cff4..16d82ba 100644
+--- a/src-tauri/assets/agent-workbench.html
++++ b/src-tauri/assets/agent-workbench.html
+@@ -621,8 +621,8 @@
+       var WORKSPACE_URL = 'https://watch.sding.me/admin/my-day/?desktop=1';
+       var STORAGE_KEY = 'claritide.agent.projects.v2';
+       var LEGACY_STORAGE_KEY = 'claritide.agent.projects.v1';
+-      var FILE_LIMIT_BYTES = 512 * 1024;
+-      var TOTAL_FILE_LIMIT_BYTES = 1024 * 1024;
++      var FILE_LIMIT_BYTES = 64 * 1024;
++      var TOTAL_FILE_LIMIT_BYTES = 64 * 1024;
+       var EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+       var locale = new URLSearchParams(window.location.search).get('locale') === 'en' ? 'en' : 'zh-CN';
+       var english = locale === 'en';
+@@ -750,6 +750,9 @@
+         lastSubmittedText: '',
+         voiceActive: false
+       };
++      state.pendingApprovals = {};
++      state.bufferedEvents = [];
++      state.closingPromise = Promise.resolve();
+ 
+       var $ = function (selector, root) { return (root || document).querySelector(selector); };
+       var $$ = function (selector, root) { return Array.prototype.slice.call((root || document).querySelectorAll(selector)); };
+@@ -1162,6 +1165,24 @@
+         details.textContent = tr('查看详情');
+         details.addEventListener('click', openActivity);
+         actions.appendChild(retry);
++        if (state.attemptingResume) {
++          var recover = document.createElement('button');
++          recover.type = 'button'; recover.className = 'card-button';
++          recover.textContent = english ? 'Continue with saved chat text' : '使用保存文本续接';
++          recover.addEventListener('click', async function () {
++            var session = activeSession();
++            if (!session) return;
++            await closeNativeSession();
++            delete session.runtimeSessionId;
++            session.nativeHistoryInitialized = false;
++            state.attemptingResume = false;
++            if (!$('#prompt').value) $('#prompt').value = state.lastSubmittedText;
++            save(); syncControls();
++            showToast(english ? 'Native history could not be restored. Your next message will include the saved chat text; tool state cannot be recovered.' : '原生记录未能恢复。下次发送会带上保存的聊天文本，工具状态无法恢复。');
++            recover.disabled = true;
++          });
++          actions.appendChild(recover);
++        }
+         actions.appendChild(details);
+         card.appendChild(title);
+         card.appendChild(copy);
+@@ -1170,6 +1191,54 @@
+         scrollConversation();
+       }
+ 
++      function clearApprovalCards() {
++        state.pendingApprovals = {};
++        $$('[data-approval-id]').forEach(function (card) { card.remove(); });
++      }
++
++      function renderApproval(approval) {
++        var id = 'approval-' + safeText(approval.requestId);
++        if (document.getElementById(id)) return;
++        var card = document.createElement('section');
++        card.id = id;
++        card.className = 'approval-card';
++        card.setAttribute('data-approval-id', approval.requestId);
++        card.setAttribute('role', 'group');
++        card.setAttribute('aria-label', english ? 'Operation approval' : '操作审批');
++        var title = document.createElement('p');
++        title.className = 'card-title';
++        title.textContent = (english ? 'Allow this operation? · ' : '允许此操作？· ') + safeText(approval.tool);
++        var detail = document.createElement('pre');
++        detail.style.cssText = 'max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere';
++        detail.textContent = JSON.stringify(approval.input, null, 2);
++        var explanation = document.createElement('p');
++        explanation.className = 'card-copy';
++        explanation.textContent = english ? 'Session approval applies only to this exact tool and input. Different commands or paths will ask again.' : '本会话授权仅适用于此工具的相同操作；命令或路径改变时仍会询问。';
++        var actions = document.createElement('div');
++        actions.className = 'card-actions';
++        var sessionId = state.nativeSessionId;
++        [['allow_once', english ? 'Allow once' : '允许一次'], ['allow_session', english ? 'Allow this operation for this session' : '本会话允许此操作'], ['deny', english ? 'Decline' : '拒绝']].forEach(function (choice) {
++          var button = document.createElement('button');
++          button.type = 'button'; button.className = 'card-button'; button.textContent = choice[1];
++          button.addEventListener('click', async function () {
++            $$('.card-button', card).forEach(function (item) { item.disabled = true; });
++            try {
++              await bridge.respondToApproval({ sessionId: sessionId, requestId: approval.requestId, decision: choice[0] });
++              delete state.pendingApprovals[approval.requestId];
++              card.remove();
++              updateRunIndicator('正在处理任务');
++            } catch (error) {
++              explanation.textContent = safeText(error && error.message || error);
++              $$('.card-button', card).forEach(function (item) { item.disabled = false; });
++            }
++          });
++          actions.appendChild(button);
++        });
++        card.appendChild(title); card.appendChild(detail); card.appendChild(explanation); card.appendChild(actions);
++        $('#conversationInner').appendChild(card);
++        scrollConversation();
++      }
++
+       function renderConversation() {
+         var host = $('#conversationInner');
+         host.textContent = '';
+@@ -1277,16 +1346,17 @@
+         var current = currentModel();
+         select.textContent = '';
+         var values = models.length ? models.slice() : ['default'];
+-        if (values.indexOf('default') < 0) values.unshift('default');
+         values.forEach(function (model) {
+           var option = document.createElement('option');
+           option.value = model;
+           option.textContent = modelLabel(model);
+           select.appendChild(option);
+         });
+-        if (values.indexOf(current) < 0) current = values[0];
++        if (values.indexOf(current) < 0) current = state.status && values.indexOf(state.status.defaultModel) >= 0 ? state.status.defaultModel : values[0];
+         select.value = current;
+         state.draftModel = current;
++        var session = activeSession();
++        if (session && values.indexOf(session.model) < 0) { session.model = current; save(); }
+       }
+ 
+       function renderAttachments() {
+@@ -1326,7 +1396,9 @@
+         $('#permissionButton').disabled = !projectReady || locked || busy;
+         $('#modelEffortButton').disabled = !projectReady || locked || busy;
+         $('#modelSelect').disabled = locked || busy;
+-        $('#effortRange').disabled = locked || busy;
++        var effortSupported = Boolean(state.status && state.status.capabilities && state.status.capabilities.effort);
++        $('#effortRange').disabled = locked || busy || !effortSupported;
++        $('#effortRange').title = effortSupported ? '' : (english ? 'This gateway does not advertise thinking-depth support.' : '当前网关未声明支持思考深度。');
+         $('#voiceButton').disabled = !projectReady || !runtimeReady || !SpeechRecognition || busy;
+         $('#voiceButton').title = !SpeechRecognition ? tr('当前系统不支持语音输入') : tr('语音输入');
+ 
+@@ -1339,7 +1411,7 @@
+         $('#sessionMeta').textContent = project ? friendlyPath(project.path) : '';
+         $('#projectButton').textContent = project ? project.name : tr('选择项目');
+         $('#permissionLabel').textContent = permissionLabel(currentPermission());
+-        $('#modelEffortLabel').textContent = modelLabel(currentModel()) + ' · ' + effortLabel(currentEffort());
++        $('#modelEffortLabel').textContent = modelLabel(currentModel()) + (effortSupported ? ' · ' + effortLabel(currentEffort()) : '');
+         $('#modelSelect').value = currentModel();
+         $('#effortRange').value = String(Math.max(0, EFFORT_LEVELS.indexOf(currentEffort())));
+         $('#effortValue').textContent = effortLabel(currentEffort());
+@@ -1357,18 +1429,35 @@
+       }
+ 
+       async function closeNativeSession(clearOnline) {
+-        var id = state.nativeSessionId;
++        var id = state.nativeSessionId || state.closingSessionId;
++        state.closingSessionId = id;
+         state.nativeSessionId = '';
+         state.turnActive = false;
+         state.starting = false;
+-        if (bridge && (id || clearOnline)) {
+-          try {
++        state.pendingApprovals = {};
++        var previous = state.closingPromise;
++        var operation = (async function () {
++          await previous;
++          if (bridge && (id || clearOnline)) {
+             await bridge.close({
+               sessionId: id || null,
+               clearOnline: clearOnline === true
+             });
+-          } catch (_error) {}
+-        }
++            if (id) {
++              for (var attempt = 0; attempt < 45; attempt += 1) {
++                var sessions = await bridge.listSessions();
++                var pending = sessions.find(function (item) { return item.sessionId === id && (item.reaped === false || item.phase === 'running' || item.phase === 'closing'); });
++                if (!pending) { state.closingSessionId = ''; return; }
++                await new Promise(function (resolve) { window.setTimeout(resolve, 100); });
++              }
++              throw new Error(english ? 'The previous task is still closing. Please retry.' : '上一个任务仍在关闭，请稍后重试。');
++            }
++          }
++        })();
++        // Keep the queue recoverable, but propagate this operation's failure to
++        // callers. A later send retries cleanup before starting another child.
++        state.closingPromise = operation.catch(function (error) { showToast(safeText(error && error.message || error)); });
++        return operation;
+       }
+ 
+       function selectProject(projectId) {
+@@ -1618,7 +1707,8 @@
+       }
+ 
+       async function ensureNativeSession() {
+-        if (state.nativeSessionId) return state.nativeSessionId;
++        await state.closingPromise;
++        if (state.closingSessionId) await closeNativeSession();
+         var project = activeProject();
+         var session = activeSession();
+         if (!project || !session) throw new Error(tr('选择项目'));
+@@ -1633,16 +1723,32 @@
+           save();
+           renderProjects();
+         }
+-        var id = crypto.randomUUID();
+-        await bridge.startSession({
++        var id = session.runtimeSessionId || crypto.randomUUID();
++        var existing = (await bridge.listSessions()).find(function (item) { return item.sessionId === id && item.phase === 'running' && item.reaped !== true; });
++        if (existing) {
++          if (existing.permission === session.permission && existing.model === session.model && existing.effort === session.effort && existing.workspaceId === project.nativeWorkspace.id) {
++            state.nativeSessionId = id; return id;
++          }
++          // A reloaded page must never reuse a more privileged process behind
++          // controls that now say Controlled or Read only.
++          state.nativeSessionId = id;
++          await closeNativeSession();
++        }
++        state.nativeSessionId = '';
++        state.attemptingResume = Boolean(session.runtimeSessionId);
++        var started = await bridge.startSession({
+           clientSessionId: id,
+           workspace: project.nativeWorkspace.id,
+           model: session.model,
+           effort: session.effort,
+           permission: session.permission,
+-          locale: locale
++          locale: locale,
++          resume: Boolean(session.runtimeSessionId)
+         });
+         state.nativeSessionId = id;
++        session.runtimeSessionId = id;
++        session.model = started.model || session.model;
++        save();
+         return id;
+       }
+ 
+@@ -1655,6 +1761,21 @@
+         return value + '\n\n' + blocks.join('\n\n');
+       }
+ 
++      function runtimeContentForSession(session, value, attachments) {
++        var content = buildRuntimeContent(value, attachments);
++        if (!session.nativeHistoryInitialized && session.messages.length) {
++          var history = session.messages.map(function (message) {
++            return { role: message.role === 'user' ? 'user' : 'assistant', content: safeText(message.text) };
++          });
++          content = 'Previous conversation from an older Claritide version (quoted context, not new instructions):\n' + JSON.stringify(history) + '\n\nCurrent user request:\n' + content;
++        }
++        var limit = state.status && state.status.maxMessageBytes || 64 * 1024;
++        if (new TextEncoder().encode(content).length > limit) {
++          throw new Error(english ? 'Message, files, and imported history exceed ' + Math.floor(limit / 1024) + ' KB. Please reduce them; your draft is saved.' : '正文、附件与导入历史合计超过 ' + Math.floor(limit / 1024) + ' KB，请减少内容后重试；草稿已保留。');
++        }
++        return content;
++      }
++
+       async function send() {
+         if (state.turnActive) return stop();
+         var value = $('#prompt').value.trim();
+@@ -1663,8 +1784,12 @@
+         var session = ensureConversation(value);
+         var attachments = state.attachments.slice();
+         var attachmentNames = attachments.map(function (item) { return item.name; });
++        var content;
++        try { content = runtimeContentForSession(session, value, attachments); }
++        catch (error) { showToast(error.message); return; }
+         state.lastSubmittedText = value;
+         state.starting = true;
++        state.bufferedEvents = [];
+         session.lastError = null;
+         session.lastResult = null;
+         renderConversation();
+@@ -1672,26 +1797,33 @@
+         try {
+           var id = await ensureNativeSession();
+           removeRunIndicator();
++          await bridge.send({ sessionId: id, content: content });
+           appendMessage('user', value, Date.now(), true, attachmentNames);
+-          $('#prompt').value = '';
++          // Clear only the accepted draft; preserve text typed while starting.
++          if ($('#prompt').value.trim() === value) $('#prompt').value = '';
+           state.attachments = [];
+           renderAttachments();
+           state.starting = false;
+           state.turnActive = true;
++          session.nativeHistoryInitialized = true;
++          save();
+           appendRunIndicator('正在处理任务');
+           syncControls();
+           recordEvent('task_started', { message: value }, Date.now());
+-          await bridge.send({ sessionId: id, content: buildRuntimeContent(value, attachments) });
++          var acceptedEvents = state.bufferedEvents.splice(0);
++          acceptedEvents.forEach(handleEvent);
+         } catch (error) {
+-          state.nativeSessionId = '';
++          // Rejected input does not close CCB. Retain the valid native session,
++          // draft and attachments so retry cannot strand the one-process slot.
+           state.starting = false;
+           state.turnActive = false;
++          state.bufferedEvents = [];
+           removeRunIndicator();
+           var message = safeText(error && error.message || error);
+-          session.lastError = { code: 'start_failed', message: message, time: Date.now() };
++          session.lastError = { code: state.nativeSessionId ? 'send_failed' : 'start_failed', message: message, time: Date.now() };
+           save();
+           appendErrorCard(message, false);
+-          recordEvent('error', { code: 'start_failed', message: message, terminal: true }, Date.now());
++          recordEvent('error', { code: session.lastError.code, message: message, terminal: true }, Date.now());
+           syncControls();
+         }
+       }
+@@ -1712,16 +1844,26 @@
+       }
+ 
+       function handleEvent(event) {
+-        if (state.nativeSessionId && event.sessionId && event.sessionId !== state.nativeSessionId) return;
++        if (event.sessionId && event.sessionId !== state.nativeSessionId) return;
++        if (state.starting && event.sessionId) { state.bufferedEvents.push(event); return; }
+         var payload = event.payload || {};
+         var session = activeSession();
+         if (!session) return;
+ 
+-        if (event.type === 'text_delta') {
++        if (event.type === 'approval_requested') {
++          state.pendingApprovals[payload.requestId] = payload;
++          renderApproval(payload);
++          updateRunIndicator(english ? 'Waiting for your approval' : '等待你的批准');
++        } else if (event.type === 'approval_resolved') {
++          delete state.pendingApprovals[payload.requestId];
++          var resolvedCard = document.getElementById('approval-' + safeText(payload.requestId));
++          if (resolvedCard) resolvedCard.remove();
++        } else if (event.type === 'text_delta') {
+           var last = $('#conversationInner .message.agent:last-of-type .message-body');
+           if (!last) last = appendMessage('agent', '', Date.now(), false);
+           last.textContent = safeText(last.textContent) + safeText(payload.text);
+         } else if (event.type === 'assistant_final') {
++          state.attemptingResume = false;
+           var finalBody = $('#conversationInner .message.agent:last-of-type .message-body');
+           if (!finalBody) finalBody = appendMessage('agent', '', Date.now(), false);
+           finalBody.textContent = safeText(payload.text || finalBody.textContent);
+@@ -1733,6 +1875,7 @@
+         } else if (event.type === 'tool_started') {
+           updateRunIndicator(toolActivity(payload.tool || payload.toolName));
+         } else if (event.type === 'turn_completed') {
++          clearApprovalCards();
+           state.turnActive = false;
+           state.starting = false;
+           removeRunIndicator();
+@@ -1744,14 +1887,17 @@
+           var approvalUnsupported = payload.code === 'tool_approval_unsupported';
+           session.lastError = { code: payload.code, message: safeText(payload.message || payload.code), time: Date.now() };
+           save();
++          if (payload.code === 'interrupt_failed') showToast(payload.message || (english ? 'Failed to stop. Please retry.' : '停止失败，请重试。'));
+           if (payload.terminal === true || approvalUnsupported) {
+             state.turnActive = false;
+             state.starting = false;
+             removeRunIndicator();
+-            if (payload.terminal === true) state.nativeSessionId = '';
++            if (payload.terminal === true) { state.closingSessionId = state.nativeSessionId; state.nativeSessionId = ''; }
++            if (payload.terminal === true) clearApprovalCards();
+             appendErrorCard(payload.message || payload.code, approvalUnsupported);
+           }
+         } else if (event.type === 'stopped') {
++          clearApprovalCards();
+           state.turnActive = Boolean(payload.settling);
+           if (!payload.settling) {
+             state.nativeSessionId = '';
+@@ -1775,7 +1921,7 @@
+             continue;
+           }
+           if (total + file.size > TOTAL_FILE_LIMIT_BYTES) {
+-            showToast('附件总大小不能超过 1 MB');
++            showToast(english ? 'Files total cannot exceed 64 KB; the message must fit too.' : '附件合计不能超过 64 KB，正文也计入总大小。');
+             break;
+           }
+           try {
+@@ -1888,6 +2034,42 @@
+         });
+       }
+ 
++      async function refreshRuntimeStatus() {
++        if (!bridge || state.statusRefreshing) return;
++        state.statusRefreshing = true;
++        try {
++          state.status = await bridge.getStatus();
++          var expires = Number(state.status.authorizationExpiresAtMs || 0);
++          var remaining = expires ? expires - Date.now() : 0;
++          var expired = !state.status.available;
++          var needsAuthorization = expired && /sign in|authoriz|expired|online ai/i.test(state.status.lastError || '');
++          var expiring = expires && remaining < 120000;
++          $('#runtimeStatus').textContent = expired ? (needsAuthorization ? (english ? 'AI authorization required' : 'AI 需要重新授权') : tr('Agent 不可用')) : expiring ? (english ? 'AI authorization expires soon' : 'AI 授权即将到期') : tr('Agent 已就绪');
++          $('#runtimeStatus').title = safeText(state.status.lastError || (expires ? (english ? 'Authorization expires: ' : '授权到期：') + new Date(expires).toLocaleTimeString(locale) : ''));
++          $('#runtimeDot').classList.toggle('ready', !expired);
++          var renew = $('#renewAuthorization');
++          if (!renew) {
++            renew = document.createElement('button');
++            renew.id = 'renewAuthorization'; renew.type = 'button'; renew.className = 'text-button';
++            renew.textContent = english ? 'Renew access' : '重新授权';
++            renew.addEventListener('click', returnToWorkspace);
++            $('#runtimeStatus').parentNode.appendChild(renew);
++          }
++          renew.hidden = !needsAuthorization && !expiring;
++          renew.disabled = state.turnActive || state.starting;
++          renew.title = english ? 'Your conversation is saved. Return to My Day, reopen AI Workbench, and select this chat to continue.' : '对话已保存。返回我的今天，重新打开 AI 工作台后选择此对话即可继续。';
++          fillModels(state.status.allowedModels || []);
++        } catch (error) {
++          state.status = { available: false };
++          $('#runtimeStatus').textContent = tr('运行时检查失败');
++          $('#runtimeStatus').title = safeText(error && error.message || error);
++          $('#runtimeDot').classList.remove('ready');
++        } finally {
++          state.statusRefreshing = false;
++          syncControls();
++        }
++      }
++
+       async function init() {
+         applyTranslations();
+         load();
+@@ -1902,17 +2084,8 @@
+           return;
+         }
+         bridge.onEvent(handleEvent);
+-        try {
+-          state.status = await bridge.getStatus();
+-          $('#runtimeStatus').textContent = tr(state.status.available ? 'Agent 已就绪' : '运行时未配置');
+-          $('#runtimeDot').classList.toggle('ready', Boolean(state.status.available));
+-          fillModels(state.status.allowedModels || []);
+-        } catch (error) {
+-          state.status = { available: false };
+-          $('#runtimeStatus').textContent = tr('运行时检查失败');
+-          var session = activeSession();
+-          if (session) recordEvent('error', { message: safeText(error && error.message || error) }, Date.now());
+-        }
++        await refreshRuntimeStatus();
++        window.setInterval(refreshRuntimeStatus, 15000);
+         syncControls();
+       }
+ 
+diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
+index 4f68404..13359df 100644
+--- a/src-tauri/src/agent_runtime.rs
++++ b/src-tauri/src/agent_runtime.rs
+@@ -34,6 +34,7 @@ const MAX_EVENT_PAYLOAD_BYTES: usize = 512 * 1024;
+ const MAX_QUEUED_EVENT_BYTES: usize = 8 * 1024 * 1024;
+ const MAX_STDERR_LINES: usize = 20;
+ const MAX_MESSAGE_BYTES: usize = 64 * 1024;
++const MAX_PENDING_APPROVALS: usize = 32;
+ const MAX_ASSISTANT_TEXT_CHARS: usize = 64 * 1024;
+ const MAX_STDOUT_LINE_BYTES: usize = 16 * 1024 * 1024;
+ const MAX_PROTOCOL_LINE_CHARS: usize = 2048;
+@@ -68,6 +69,10 @@ struct OnlineRuntimeConfig {
+     token: String,
+     expires_at_ms: u64,
+     allowed_models: Vec<String>,
++    default_model: String,
++    max_output_tokens: u32,
++    context_tokens: Option<u32>,
++    reasoning_efforts: Vec<String>,
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -166,9 +171,12 @@ struct SessionRecord {
+     effort: String,
+     permission: AgentPermissionMode,
+     events: VecDeque<AgentEvent>,
++    requires_online: bool,
+     queued_event_bytes: usize,
+     stderr: VecDeque<String>,
+     pending_interrupts: HashSet<String>,
++    pending_approvals: HashMap<String, PendingApproval>,
++    approved_operations: HashSet<String>,
+     session_started_emitted: bool,
+     canonical_assistant_seen: bool,
+     turn_active: bool,
+@@ -179,6 +187,19 @@ struct SessionRecord {
+     seen_request_order: VecDeque<String>,
+ }
+ 
++#[derive(Clone)]
++struct PendingApproval {
++    tool_use_id: String,
++    tool_name: String,
++    input: Value,
++}
++
++impl PendingApproval {
++    fn operation_key(&self) -> String {
++        format!("{}:{}", self.tool_name, self.input)
++    }
++}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ enum SessionPhase {
+     Running,
+@@ -236,6 +257,10 @@ pub struct AgentStatus {
+     runtime_source: String,
+     tools_mode: String,
+     allowed_models: Vec<String>,
++    default_model: Option<String>,
++    authorization_expires_at_ms: Option<u64>,
++    max_message_bytes: usize,
++    allowed_efforts: Vec<String>,
+     capabilities: AgentCapabilities,
+     supported: Vec<&'static str>,
+     unsupported: Vec<&'static str>,
+@@ -255,6 +280,7 @@ pub struct AgentCapabilities {
+     tools: bool,
+     approvals: bool,
+     full_access: bool,
++    context_budgeting: bool,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -267,6 +293,7 @@ pub struct AgentSessionSummary {
+     model: String,
+     effort: String,
+     permission: String,
++    reaped: bool,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -290,6 +317,8 @@ pub struct AgentStartRequest {
+     locale: Option<String>,
+     #[serde(default)]
+     permission: AgentPermissionMode,
++    #[serde(default)]
++    resume: bool,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -306,7 +335,17 @@ pub struct AgentStartResponse {
+ #[serde(rename_all = "camelCase")]
+ pub struct AgentSendRequest {
+     session_id: String,
++    #[serde(default)]
+     content: String,
++    #[serde(default)]
++    approval: Option<AgentApprovalDecision>,
++}
++
++#[derive(Debug, Deserialize)]
++#[serde(rename_all = "camelCase")]
++pub struct AgentApprovalDecision {
++    request_id: String,
++    decision: String,
+ }
+ 
+ #[derive(Debug, Serialize)]
+@@ -330,6 +369,18 @@ pub struct AgentOnlineRuntimeRequest {
+     default_model: String,
+     allowed_models: Vec<String>,
+     session_id: String,
++    #[serde(default)]
++    gateway_limits: Option<AgentGatewayLimits>,
++}
++
++#[derive(Debug, Deserialize, Default)]
++pub struct AgentGatewayLimits {
++    #[serde(default)]
++    max_output_tokens: Option<u32>,
++    #[serde(default)]
++    max_text_bytes: Option<u32>,
++    #[serde(default)]
++    chat_reasoning_efforts: Vec<String>,
+ }
+ 
+ #[derive(Debug, Deserialize)]
+@@ -371,8 +422,7 @@ fn validated_online_runtime(
+     {
+         return Err("The AI runtime token is invalid".to_string());
+     }
+-    if !(ONLINE_TOKEN_MIN_TTL_SECONDS..=ONLINE_TOKEN_MAX_TTL_SECONDS)
+-        .contains(&request.expires_in)
++    if !(ONLINE_TOKEN_MIN_TTL_SECONDS..=ONLINE_TOKEN_MAX_TTL_SECONDS).contains(&request.expires_in)
+     {
+         return Err("The AI runtime token lifetime is invalid".to_string());
+     }
+@@ -403,11 +453,24 @@ fn validated_online_runtime(
+     {
+         return Err("The AI runtime session id is invalid".to_string());
+     }
++    let limits = request.gateway_limits.unwrap_or_default();
++    let reasoning_efforts = limits
++        .chat_reasoning_efforts
++        .into_iter()
++        .filter(|effort| valid_effort(effort))
++        .collect();
+     Ok(OnlineRuntimeConfig {
+         gateway_url: ONLINE_GATEWAY_URL.to_string(),
+         token: request.token,
+         expires_at_ms: now_ms().saturating_add(request.expires_in.saturating_mul(1000)),
+         allowed_models,
++        default_model: request.default_model,
++        max_output_tokens: limits.max_output_tokens.unwrap_or(8192).clamp(1, 8192),
++        context_tokens: limits
++            .max_text_bytes
++            .filter(|bytes| *bytes >= 131072)
++            .map(|bytes| (bytes / 4).clamp(32768, 131072)),
++        reasoning_efforts,
+     })
+ }
+ 
+@@ -888,14 +951,8 @@ pub(crate) fn normalize_ndjson_line(line: &str) -> Vec<NormalizedEventDraft> {
+                 .and_then(Value::as_str)
+                 == Some("can_use_tool")
+             {
+-                events.push(NormalizedEventDraft {
+-                    kind: "error",
+-                    payload: json!({
+-                        "code": "tool_approval_unsupported",
+-                        "message": "Tool approval is not available in agent capability v2",
+-                        "terminal": false,
+-                    }),
+-                });
++                // Permission requests are validated and queued by handle_stdout_line.
++                // Never turn a pending approval into a failed/completed user turn.
+             }
+         }
+         _ => {}
+@@ -1151,25 +1208,63 @@ fn handle_stdout_line(session_id: &str, generation: u64, line: &str) {
+             );
+             return;
+         }
++        let request = parsed
++            .as_ref()
++            .and_then(|value| value.get("request"))
++            .unwrap();
++        let tool_name = request
++            .get("tool_name")
++            .and_then(Value::as_str)
++            .unwrap_or("");
++        let input = request.get("input").cloned().unwrap_or(Value::Null);
++        if tool_name.is_empty() || tool_name.len() > 200 || !input.is_object() {
++            quarantine_session_locked(
++                &mut state,
++                session_id,
++                generation,
++                "invalid_approval",
++                "The agent runtime emitted an invalid permission request",
++            );
++            return;
++        }
++        let approval = PendingApproval {
++            tool_use_id: tool_use_id.unwrap().to_string(),
++            tool_name: tool_name.to_string(),
++            input,
++        };
++        let mut needs_confirmation = false;
+         let write_error = state.sessions.get_mut(session_id).and_then(|session| {
+-            write_control(
+-                session,
++            if session.permission != AgentPermissionMode::Controlled {
++                return write_approval_response(session, request_id, &approval, false).err();
++            }
++            if session
++                .approved_operations
++                .contains(&approval.operation_key())
++            {
++                return write_approval_response(session, request_id, &approval, true).err();
++            }
++            if session.pending_approvals.len() >= MAX_PENDING_APPROVALS {
++                return write_approval_response(session, request_id, &approval, false).err();
++            }
++            session
++                .pending_approvals
++                .insert(request_id.to_string(), approval.clone());
++            needs_confirmation = true;
++            None
++        });
++        if needs_confirmation {
++            push_event_locked(
++                &mut state,
++                session_id,
++                "approval_requested",
+                 json!({
+-                    "type": "control_response",
+-                    "response": {
+-                        "subtype": "success",
+-                        "request_id": request_id,
+-                        "response": {
+-                            "behavior": "deny",
+-                            "message": "Claritide agent capability v2 does not support tool approvals",
+-                            "interrupt": false,
+-                            "toolUseID": tool_use_id.unwrap_or_default(),
+-                        },
+-                    },
++                    "requestId": request_id,
++                    "toolUseId": approval.tool_use_id,
++                    "tool": approval.tool_name,
++                    "input": approval.input,
+                 }),
+-            )
+-            .err()
+-        });
++            );
++        }
+         if let Some(error) = write_error {
+             if state.sessions.get(session_id).is_some_and(|session| {
+                 session.generation == generation && session.phase == SessionPhase::Running
+@@ -1186,6 +1281,27 @@ fn handle_stdout_line(session_id: &str, generation: u64, line: &str) {
+         }
+     }
+ 
++    if let Some(request_id) = parsed.as_ref().and_then(|value| {
++        (value.get("type").and_then(Value::as_str) == Some("control_cancel_request"))
++            .then(|| value.get("request_id").and_then(Value::as_str))
++            .flatten()
++    }) {
++        let cancelled = state
++            .sessions
++            .get_mut(session_id)
++            .is_some_and(|session| session.pending_approvals.remove(request_id).is_some());
++        if cancelled {
++            push_event_locked(
++                &mut state,
++                session_id,
++                "approval_resolved",
++                json!({
++                    "requestId": request_id, "decision": "cancelled",
++                }),
++            );
++        }
++    }
++
+     if let Some((request_id, succeeded)) = parsed.as_ref().and_then(|value| {
+         if value.get("type").and_then(Value::as_str) != Some("control_response") {
+             return None;
+@@ -1201,6 +1317,9 @@ fn handle_stdout_line(session_id: &str, generation: u64, line: &str) {
+             .get_mut(session_id)
+             .is_some_and(|session| session.pending_interrupts.remove(&request_id));
+         if interrupted && succeeded {
++            if let Some(session) = state.sessions.get_mut(session_id) {
++                session.pending_approvals.clear();
++            }
+             push_event_locked(
+                 &mut state,
+                 session_id,
+@@ -1228,6 +1347,7 @@ fn handle_stdout_line(session_id: &str, generation: u64, line: &str) {
+         if let Some(session) = state.sessions.get_mut(session_id) {
+             session.turn_active = false;
+             session.pending_interrupts.clear();
++            session.pending_approvals.clear();
+         }
+     }
+ }
+@@ -1520,10 +1640,65 @@ fn user_message(session_id: &str, turn_id: &str, content: &str) -> Value {
+     })
+ }
+ 
++fn write_approval_response(
++    session: &mut SessionRecord,
++    request_id: &str,
++    approval: &PendingApproval,
++    allow: bool,
++) -> Result<(), String> {
++    write_control(session, approval_response(request_id, approval, allow))
++}
++
++fn approval_response(request_id: &str, approval: &PendingApproval, allow: bool) -> Value {
++    let response = if allow {
++        json!({ "behavior": "allow", "updatedInput": approval.input, "toolUseID": approval.tool_use_id })
++    } else {
++        json!({ "behavior": "deny", "message": "The user declined this operation", "interrupt": false,
++            "toolUseID": approval.tool_use_id })
++    };
++    json!({
++        "type": "control_response",
++        "response": { "subtype": "success", "request_id": request_id, "response": response }
++    })
++}
++
++fn validate_session_binding(
++    config_dir: &Path,
++    session_id: &str,
++    workspace: &Path,
++    resume: bool,
++) -> Result<(), String> {
++    let path = config_dir.join("claritide-session-workspaces.json");
++    let mut bindings: HashMap<String, PathBuf> = if path.exists() {
++        serde_json::from_slice(
++            &std::fs::read(&path).map_err(|_| "Unable to read saved conversation bindings")?,
++        )
++        .map_err(|_| "Saved conversation bindings are invalid")?
++    } else {
++        HashMap::new()
++    };
++    if resume {
++        if bindings.get(session_id).map(PathBuf::as_path) != Some(workspace) {
++            return Err("The saved conversation belongs to another folder; choose its original project folder".to_string());
++        }
++        return Ok(());
++    }
++    if bindings.contains_key(session_id) {
++        return Err("This conversation already exists; resume it instead".to_string());
++    }
++    bindings.insert(session_id.to_string(), workspace.to_path_buf());
++    let temporary = config_dir.join("claritide-session-workspaces.tmp");
++    let data =
++        serde_json::to_vec(&bindings).map_err(|_| "Unable to encode conversation bindings")?;
++    std::fs::write(&temporary, data).map_err(|_| "Unable to save conversation bindings")?;
++    std::fs::rename(&temporary, &path).map_err(|_| "Unable to commit conversation bindings")?;
++    Ok(())
++}
++
+ fn runtime_args(
+     session_id: &str,
+     model: &str,
+-    tools_mode: ToolsMode,
++    _tools_mode: ToolsMode,
+     permission: AgentPermissionMode,
+ ) -> Vec<String> {
+     let mut args = vec![
+@@ -1557,8 +1732,8 @@ fn runtime_args(
+                 // for permission prompts. Keep all requests under Claritide control.
+                 "--permission-prompt-tool".to_string(),
+                 "stdio".to_string(),
+-                "--tools".to_string(),
+-                tools_mode.cli_value().to_string(),
++                // SIMPLE mode exposes the built-in file/shell tools. Every operation
++                // needing permission must pass the structured approval channel.
+             ]);
+         }
+         AgentPermissionMode::Readonly => {
+@@ -1619,6 +1794,7 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+                     model: session.model.clone(),
+                     effort: session.effort.clone(),
+                     permission: session.permission.as_str().to_string(),
++                    reaped: session.reaped,
+                 })
+                 .collect();
+             (sessions, state.last_error.clone())
+@@ -1634,18 +1810,60 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+             .unwrap_or_else(|_| "unavailable".to_string()),
+         tools_mode,
+         allowed_models,
++        default_model: config
++            .as_ref()
++            .ok()
++            .and_then(|config| {
++                config
++                    .online
++                    .as_ref()
++                    .map(|online| online.default_model.clone())
++            })
++            .or_else(|| {
++                config
++                    .as_ref()
++                    .ok()
++                    .and_then(|config| config.models.first().cloned())
++            }),
++        authorization_expires_at_ms: lock_state().ok().and_then(|state| {
++            state
++                .online_runtime
++                .as_ref()
++                .map(|online| online.expires_at_ms)
++        }),
++        max_message_bytes: MAX_MESSAGE_BYTES,
++        allowed_efforts: config
++            .as_ref()
++            .ok()
++            .and_then(|config| {
++                config
++                    .online
++                    .as_ref()
++                    .map(|online| online.reasoning_efforts.clone())
++            })
++            .unwrap_or_default(),
+         capabilities: AgentCapabilities {
+             workspace: true,
+             models: true,
+-            effort: true,
++            effort: config.as_ref().is_ok_and(|config| {
++                config.source == RuntimeSource::Environment
++                    || config
++                        .online
++                        .as_ref()
++                        .is_some_and(|online| !online.reasoning_efforts.is_empty())
++            }),
+             streaming: true,
+             stop: true,
+-            resume: false,
+-            tools: config
+-                .as_ref()
+-                .is_ok_and(|config| config.tools_mode == ToolsMode::ReadOnly),
+-            approvals: false,
++            resume: true,
++            tools: true,
++            approvals: true,
+             full_access: true,
++            context_budgeting: config.as_ref().is_ok_and(|config| {
++                config
++                    .online
++                    .as_ref()
++                    .is_some_and(|online| online.context_tokens.is_some())
++            }),
+         },
+         supported: vec![
+             "getStatus",
+@@ -1659,8 +1877,10 @@ pub fn agent_get_status(app: AppHandle) -> AgentStatus {
+             "close",
+             "onEvent",
+             "fullAccess",
++            "resume",
++            "toolApproval",
+         ],
+-        unsupported: vec!["resume", "toolApproval"],
++        unsupported: vec![],
+         sessions,
+         last_error: config.err().or(runtime_error),
+     }
+@@ -1718,7 +1938,16 @@ pub fn agent_start(
+         return Err("Invalid locale".to_string());
+     }
+     let config = runtime_config(&app)?;
+-    let model = request.model.unwrap_or_else(|| config.models[0].clone());
++    let model = request
++        .model
++        .filter(|model| model != "default")
++        .unwrap_or_else(|| {
++            config
++                .online
++                .as_ref()
++                .map(|online| online.default_model.clone())
++                .unwrap_or_else(|| config.models[0].clone())
++        });
+     if !config.models.iter().any(|allowed| allowed == &model) {
+         return Err("The requested model is not authorized for this account".to_string());
+     }
+@@ -1761,6 +1990,12 @@ pub fn agent_start(
+         if resolved_workspace != workspace_path || !resolved_workspace.is_dir() {
+             return Err("The selected workspace changed; choose the folder again".to_string());
+         }
++        validate_session_binding(
++            &config_dir,
++            &request.client_session_id,
++            &resolved_workspace,
++            request.resume,
++        )?;
+         let workspace_name = resolved_workspace
+             .file_name()
+             .and_then(|value| value.to_str())
+@@ -1774,18 +2009,26 @@ pub fn agent_start(
+             // to the drive root (for example, C:), exiting with EISDIR.
+             command.arg(windows_compatible_path(entrypoint));
+         }
++        let mut args = runtime_args(
++            &request.client_session_id,
++            &model,
++            config.tools_mode,
++            request.permission,
++        );
++        if request.resume {
++            if let Some(flag) = args.iter_mut().find(|arg| arg.as_str() == "--session-id") {
++                *flag = "--resume".to_string();
++            }
++        }
+         command
+-            .args(runtime_args(
+-                &request.client_session_id,
+-                &model,
+-                config.tools_mode,
+-                request.permission,
+-            ))
++            .args(args)
+             .current_dir(&resolved_workspace)
+             .env("CLAUDE_CONFIG_DIR", &config_dir)
+             .env("CLAUDE_CODE_SIMPLE", "1")
+             .env("CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS", "1")
+             .env("CLAUDE_CODE_EFFORT_LEVEL", &effort)
++            .env("OPENAI_MAX_TOKENS", "8192")
++            .env("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "8192")
+             .env_remove("CLAUDE_CODE_RESUME_INTERRUPTED_TURN")
+             .stdin(Stdio::piped())
+             .stdout(Stdio::piped())
+@@ -1797,14 +2040,30 @@ pub fn agent_start(
+             "OPENAI_MODEL",
+             "ANTHROPIC_BASE_URL",
+             "ANTHROPIC_API_KEY",
++            "CLARITIDE_GATEWAY_REASONING",
++            "CLARITIDE_GATEWAY_CONTEXT_TOKENS",
+         ] {
+             command.env_remove(variable);
+         }
+         if let Some(online) = &config.online {
++            if let Some(context_tokens) = online.context_tokens {
++                command.env(
++                    "CLARITIDE_GATEWAY_CONTEXT_TOKENS",
++                    context_tokens.to_string(),
++                );
++            }
++            if online.reasoning_efforts.contains(&effort) {
++                command.env("CLARITIDE_GATEWAY_REASONING", "1");
++            }
+             command
+                 .env("CLAUDE_CODE_USE_OPENAI", "1")
+                 .env("OPENAI_BASE_URL", &online.gateway_url)
+                 .env("OPENAI_API_KEY", &online.token)
++                .env("OPENAI_MAX_TOKENS", online.max_output_tokens.to_string())
++                .env(
++                    "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
++                    online.max_output_tokens.to_string(),
++                )
+                 .env("OPENAI_MODEL", &model);
+         }
+         #[cfg(target_os = "windows")]
+@@ -1844,9 +2103,12 @@ pub fn agent_start(
+                 effort: effort.clone(),
+                 permission: request.permission,
+                 events: VecDeque::new(),
++                requires_online: config.online.is_some(),
+                 queued_event_bytes: 0,
+                 stderr: VecDeque::new(),
+                 pending_interrupts: HashSet::new(),
++                pending_approvals: HashMap::new(),
++                approved_operations: HashSet::new(),
+                 session_started_emitted: false,
+                 canonical_assistant_seen: false,
+                 turn_active: false,
+@@ -1884,6 +2146,57 @@ pub fn agent_start(
+ 
+ #[tauri::command]
+ pub fn agent_send(request: AgentSendRequest) -> Result<AgentSendResponse, String> {
++    if let Some(decision) = request.approval {
++        if !request.content.is_empty() {
++            return Err("An approval reply cannot contain a user message".to_string());
++        }
++        if !matches!(
++            decision.decision.as_str(),
++            "allow_once" | "allow_session" | "deny"
++        ) {
++            return Err("Unknown approval decision".to_string());
++        }
++        let mut state = lock_state()?;
++        let session = state
++            .sessions
++            .get_mut(&request.session_id)
++            .ok_or("Unknown agent session")?;
++        if session.phase != SessionPhase::Running
++            || !session.turn_active
++            || session.permission != AgentPermissionMode::Controlled
++        {
++            return Err("This session cannot accept permission replies".to_string());
++        }
++        let approval = session
++            .pending_approvals
++            .get(&decision.request_id)
++            .cloned()
++            .ok_or("This approval is no longer pending")?;
++        if decision.decision == "allow_session" && session.approved_operations.len() >= 128 {
++            return Err("The saved approval limit is reached; choose Allow once".to_string());
++        }
++        write_approval_response(
++            session,
++            &decision.request_id,
++            &approval,
++            decision.decision != "deny",
++        )?;
++        session.pending_approvals.remove(&decision.request_id);
++        if decision.decision == "allow_session" {
++            session.approved_operations.insert(approval.operation_key());
++        }
++        push_event_locked(
++            &mut state,
++            &request.session_id,
++            "approval_resolved",
++            json!({
++                "requestId": decision.request_id, "decision": decision.decision,
++            }),
++        );
++        return Ok(AgentSendResponse {
++            turn_id: decision.request_id,
++        });
++    }
+     let content = request.content.trim();
+     if content.is_empty() {
+         return Err("Agent message cannot be empty".to_string());
+@@ -1892,6 +2205,16 @@ pub fn agent_send(request: AgentSendRequest) -> Result<AgentSendResponse, String
+         return Err(format!("Agent message exceeds {MAX_MESSAGE_BYTES} bytes"));
+     }
+     let mut state = lock_state()?;
++    if state
++        .sessions
++        .get(&request.session_id)
++        .is_some_and(|session| session.requires_online)
++        && !state.online_runtime.as_ref().is_some_and(|online| {
++            online.expires_at_ms > now_ms().saturating_add(ONLINE_TOKEN_START_MARGIN_MS)
++        })
++    {
++        return Err("AI_AUTHORIZATION_REQUIRED: Return to My Day and reopen AI Workbench to renew authorization; this conversation is saved".to_string());
++    }
+     let session = state
+         .sessions
+         .get_mut(&request.session_id)
+@@ -1979,6 +2302,7 @@ pub fn agent_close(request: AgentCloseRequest) -> Result<(), String> {
+         session.phase = SessionPhase::Closing;
+         session.turn_active = false;
+         session.pending_interrupts.clear();
++        session.pending_approvals.clear();
+         // Closing the final sender lets the writer drain a queued end_session
+         // and then closes stdin. If the queue is unavailable, kill immediately.
+         session.writer.take();
+@@ -2093,6 +2417,58 @@ pub fn close_all() {
+ 
+ #[cfg(test)]
+ mod tests {
++    #[test]
++    fn approval_replies_preserve_original_input_and_do_not_grant_prefixes() {
++        let approval = super::PendingApproval {
++            tool_use_id: "tool-123".to_string(),
++            tool_name: "Bash".to_string(),
++            input: serde_json::json!({ "command": "git status" }),
++        };
++        let response = super::approval_response("request-123", &approval, true);
++        assert_eq!(response["response"]["response"]["behavior"], "allow");
++        assert_eq!(
++            response["response"]["response"]["updatedInput"],
++            approval.input
++        );
++        assert_eq!(response["response"]["response"]["toolUseID"], "tool-123");
++        let mut changed = approval.clone();
++        changed.input = serde_json::json!({ "command": "git status; echo different" });
++        assert_ne!(approval.operation_key(), changed.operation_key());
++        changed.input = serde_json::json!({ "command": "git status", "cwd": "/another-project" });
++        assert_ne!(approval.operation_key(), changed.operation_key());
++        let denied = super::approval_response("request-123", &approval, false);
++        assert_eq!(denied["response"]["response"]["behavior"], "deny");
++        assert!(denied["response"]["response"].get("updatedInput").is_none());
++    }
++
++    #[test]
++    fn restored_conversations_are_bound_to_the_original_workspace() {
++        let directory =
++            std::env::temp_dir().join(format!("claritide-bindings-{}", super::new_uuid_v4()));
++        std::fs::create_dir_all(&directory).unwrap();
++        let original = directory.join("project-a");
++        let other = directory.join("project-b");
++        let id = super::new_uuid_v4();
++        assert!(super::validate_session_binding(&directory, &id, &original, false).is_ok());
++        // Updating the same registry must preserve earlier bindings, including
++        // on Windows where the destination file already exists.
++        assert!(
++            super::validate_session_binding(&directory, &super::new_uuid_v4(), &other, false)
++                .is_ok()
++        );
++        assert!(super::validate_session_binding(&directory, &id, &original, true).is_ok());
++        assert!(super::validate_session_binding(&directory, &id, &other, true).is_err());
++        assert!(super::validate_session_binding(
++            &directory,
++            &super::new_uuid_v4(),
++            &original,
++            true
++        )
++        .is_err());
++        assert!(super::validate_session_binding(&directory, &id, &original, false).is_err());
++        std::fs::remove_dir_all(&directory).unwrap();
++    }
++
+     use super::{
+         advance_seq, bundled_runtime_paths, mismatched_session_id, new_uuid_v4,
+         normalize_ndjson_line, read_bounded_lines, remember_protocol_id, result_fallback_text,
+@@ -2123,11 +2499,40 @@ mod tests {
+             token: "art_ephemeral_test_token".to_string(),
+             expires_in: 900,
+             default_model: "gpt-5.6-sol".to_string(),
++            gateway_limits: None,
+             allowed_models: vec!["gpt-5.6-sol".to_string(), "gpt-5.6-terra".to_string()],
+             session_id: "ars_test_session".to_string(),
+         }
+     }
+ 
++    #[test]
++    fn advertised_gateway_budgets_preserve_defaults_and_bound_context() {
++        let mut request = online_request();
++        request.gateway_limits = Some(super::AgentGatewayLimits {
++            max_output_tokens: Some(32768),
++            max_text_bytes: Some(131072),
++            chat_reasoning_efforts: vec!["high".to_string(), "invalid".to_string()],
++        });
++        let config = validated_online_runtime(request).unwrap();
++        assert_eq!(config.default_model, "gpt-5.6-sol");
++        assert_eq!(config.max_output_tokens, 8192);
++        assert_eq!(config.context_tokens, Some(32768));
++        assert_eq!(config.reasoning_efforts, vec!["high"]);
++        let mut limited = online_request();
++        limited.gateway_limits = Some(super::AgentGatewayLimits {
++            max_text_bytes: Some(16384),
++            ..Default::default()
++        });
++        assert!(validated_online_runtime(limited)
++            .unwrap()
++            .context_tokens
++            .is_none());
++        assert!(validated_online_runtime(online_request())
++            .unwrap()
++            .context_tokens
++            .is_none());
++    }
++
+     #[test]
+     fn validates_online_gateway_token_ttl_and_model_authorization() {
+         assert!(validated_online_runtime(online_request()).is_ok());
+@@ -2268,6 +2673,7 @@ mod tests {
+         assert!(args
+             .windows(2)
+             .any(|pair| pair == ["--permission-mode", "default"]));
++        assert!(!args.iter().any(|arg| arg == "--tools"));
+         assert!(!args.iter().any(|arg| arg.contains("bypass")));
+         assert!(!args
+             .iter()
+@@ -2412,7 +2818,7 @@ mod tests {
+                 .iter()
+                 .filter(|event| event.payload["code"] == "tool_approval_unsupported")
+                 .count(),
+-            1
++            0
+         );
+     }
+ 
+diff --git a/src-tauri/src/agent_workbench_bridge.js b/src-tauri/src/agent_workbench_bridge.js
+index e91e546..263f764 100644
+--- a/src-tauri/src/agent_workbench_bridge.js
++++ b/src-tauri/src/agent_workbench_bridge.js
+@@ -93,14 +93,22 @@
+     send: function (options) {
+       return invoke('agent_send', { request: assertObject(options, 'options') });
+     },
++    respondToApproval: function (options) {
++      options = assertObject(options, 'options');
++      return invoke('agent_send', { request: {
++        sessionId: options.sessionId,
++        approval: { requestId: options.requestId, decision: options.decision }
++      } });
++    },
+     stop: function (options) {
+       return invoke('agent_interrupt', { request: assertObject(options, 'options') });
+     },
+     close: function (options) {
+       return invoke('agent_close', { request: assertObject(options, 'options') });
+     },
+-    resume: function () {
+-      return unsupported('resume');
++    resume: function (options) {
++      options = assertObject(options, 'options');
++      return invoke('agent_start', { request: Object.assign({}, options, { resume: true }) });
+     },
+     onEvent: function (handler) {
+       if (typeof handler !== 'function') throw new TypeError('handler must be a function');
+diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
+index dda6d60..cc12521 100644
+--- a/src-tauri/src/seeseeyou_bridge.js
++++ b/src-tauri/src/seeseeyou_bridge.js
+@@ -275,6 +275,7 @@
+           token: runtimeToken,
+           expiresIn: Number(issued && issued.expires_in || 0),
+           defaultModel: String(issued && issued.default_model || config.default_model || ''),
++          gatewayLimits: issued && issued.gateway_limits || config.gateway_limits || null,
+           allowedModels: Array.isArray(issued && issued.allowed_models)
+             ? issued.allowed_models.map(String)
+             : [],

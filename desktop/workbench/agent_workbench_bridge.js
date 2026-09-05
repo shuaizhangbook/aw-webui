@@ -93,14 +93,22 @@
     send: function (options) {
       return invoke('agent_send', { request: assertObject(options, 'options') });
     },
+    respondToApproval: function (options) {
+      options = assertObject(options, 'options');
+      return invoke('agent_send', { request: {
+        sessionId: options.sessionId,
+        approval: { requestId: options.requestId, decision: options.decision }
+      } });
+    },
     stop: function (options) {
       return invoke('agent_interrupt', { request: assertObject(options, 'options') });
     },
     close: function (options) {
       return invoke('agent_close', { request: assertObject(options, 'options') });
     },
-    resume: function () {
-      return unsupported('resume');
+    resume: function (options) {
+      options = assertObject(options, 'options');
+      return invoke('agent_start', { request: Object.assign({}, options, { resume: true }) });
     },
     onEvent: function (handler) {
       if (typeof handler !== 'function') throw new TypeError('handler must be a function');
