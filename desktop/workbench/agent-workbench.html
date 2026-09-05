@@ -2659,6 +2659,15 @@
         await refreshRuntimeStatus();
         window.setInterval(refreshRuntimeStatus, 15000);
         syncControls();
+        // Confirm the document is usable only after its controls and native
+        // status have initialized. Queuing a WebView navigation is not enough.
+        try {
+          await bridge.markReady();
+        } catch (error) {
+          $('#runtimeStatus').textContent = english ? 'Workbench opening failed' : '工作台打开失败';
+          $('#runtimeStatus').title = safeText(error && error.message || error);
+          showToast((english ? 'Unable to confirm workbench startup: ' : '工作台启动确认失败：') + safeText(error && error.message || error));
+        }
       }
 
       void init();

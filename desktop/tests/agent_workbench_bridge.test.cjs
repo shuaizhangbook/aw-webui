@@ -23,7 +23,7 @@ function loadBridge(invoke, location = {
     clearInterval(id) { assert.equal(id, 7); cleared = true; },
   };
   window.top = window;
-  const context = { window, console, Date, Error, Object, Promise, Set, TypeError };
+  const context = { window, console, Date, Error, Object, Promise, Set, TypeError, URLSearchParams };
   vm.runInNewContext(fs.readFileSync(bridgePath, 'utf8'), context, { filename: bridgePath });
   return {
     window,
@@ -41,6 +41,23 @@ test('local bridge initializes on the Windows custom-protocol mapping', () => {
     port: '',
   });
   assert.equal(harness.bridge.capabilityVersion, 2);
+});
+
+test('workbench readiness acknowledges the exact launch attempt only when requested', async () => {
+  const calls = [];
+  const harness = loadBridge(async (command, args) => { calls.push([command, args]); }, {
+    protocol: 'http:', hostname: 'claritide-agent.localhost', port: '',
+    search: '?locale=zh-CN&attempt=53c6ebe2-b5a2-4db4-8c54-0df5c90fa7a5',
+  });
+  assert.equal(calls.length, 0, 'bridge injection must not signal an initialized app');
+  const urls = [];
+  harness.window.history = { replaceState(_state, _title, url) { urls.push(url); } };
+  await harness.bridge.markReady();
+  assert.equal(calls[0][0], 'agent_workbench_ready');
+  assert.equal(calls[0][1].attemptId, '53c6ebe2-b5a2-4db4-8c54-0df5c90fa7a5');
+  assert.deepEqual(urls, ['/?locale=zh-CN']);
+  const reload = loadBridge(async (command) => { throw new Error('Unexpected command: ' + command); });
+  await reload.bridge.markReady();
 });
 
 test('local bridge exposes the capability-v2 surface', async () => {

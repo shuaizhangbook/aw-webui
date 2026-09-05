@@ -11,6 +11,41 @@ if (!htmlPath) {
 const html = fs.readFileSync(htmlPath, 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
 
+test('native startup is acknowledged after rendering and the first runtime status check', async () => {
+  const initSource = scripts[0].slice(scripts[0].indexOf('async function init()'), scripts[0].lastIndexOf('void init();'));
+  const calls = [];
+  let resolveStatus;
+  const status = new Promise(resolve => { resolveStatus = resolve; });
+  const context = {
+    bridge: { onEvent() { calls.push('subscribe'); }, async markReady() { calls.push('ready'); } },
+    handleEvent() {},
+    async refreshRuntimeStatus() { calls.push('status'); await status; },
+    window: { setInterval() {} },
+  };
+  for (const name of ['applyTranslations', 'initLayout', 'load', 'restoreDraft', 'bind', 'renderProjects', 'renderConversation', 'renderAttachments', 'renderActivity', 'syncControls']) {
+    context[name] = () => { calls.push(name); };
+  }
+  vm.runInNewContext(initSource + '\nthis.startup = init();', context);
+  assert.ok(calls.includes('bind') && calls.includes('renderConversation'));
+  assert.equal(calls.includes('ready'), false, 'native navigation success cannot stand in for UI readiness');
+  resolveStatus();
+  await context.startup;
+  assert.deepEqual(calls.slice(-2), ['syncControls', 'ready']);
+});
+
+test('failed UI initialization never falsely acknowledges a successful open', async () => {
+  const initSource = scripts[0].slice(scripts[0].indexOf('async function init()'), scripts[0].lastIndexOf('void init();'));
+  let acknowledged = false;
+  const context = {
+    applyTranslations() {}, initLayout() {}, load() {}, restoreDraft() {},
+    bind() { throw new Error('broken control binding'); },
+    bridge: { async markReady() { acknowledged = true; } },
+  };
+  vm.runInNewContext(initSource + '\nthis.startup = init();', context);
+  await assert.rejects(context.startup, /broken control binding/);
+  assert.equal(acknowledged, false);
+});
+
 test('workbench is a bilingual, deny-by-default local document', () => {
   assert.match(html, /<html lang="zh-CN">/);
   assert.match(html, /Content-Security-Policy[^>]+default-src 'none'/);

@@ -73,6 +73,23 @@
 
   var bridge = Object.freeze({
     capabilityVersion: 2,
+    markReady: function () {
+      var query = new URLSearchParams(location.search || '');
+      var attemptId = query.get('attempt');
+      // A normal reload can open a document without a pending launch.
+      if (!attemptId) return Promise.resolve();
+      return invoke('agent_workbench_ready', { attemptId: attemptId }).then(function () {
+        // A later reload is not another launch. Keep the locale, but retire
+        // this one-time correlation ID once the native side has accepted it.
+        if (window.history && typeof window.history.replaceState === 'function') {
+          query.delete('attempt');
+          var search = query.toString();
+          try {
+            window.history.replaceState(null, '', (location.pathname || '/') + (search ? '?' + search : '') + (location.hash || ''));
+          } catch (_error) { /* URL cleanup must not turn readiness into failure. */ }
+        }
+      });
+    },
     getStatus: function () {
       return invoke('agent_get_status');
     },

@@ -1,5 +1,5 @@
 diff --git a/src-tauri/assets/agent-workbench.html b/src-tauri/assets/agent-workbench.html
-index 2c0cff4..cf81e9a 100644
+index 2c0cff4..bb77702 100644
 --- a/src-tauri/assets/agent-workbench.html
 +++ b/src-tauri/assets/agent-workbench.html
 @@ -29,7 +29,7 @@
@@ -1429,26 +1429,34 @@ index 2c0cff4..cf81e9a 100644
          bind();
          renderProjects();
          renderConversation();
-@@ -1902,17 +2656,8 @@
+@@ -1902,18 +2656,18 @@
            return;
          }
          bridge.onEvent(handleEvent);
--        try {
++        await refreshRuntimeStatus();
++        window.setInterval(refreshRuntimeStatus, 15000);
++        syncControls();
++        // Confirm the document is usable only after its controls and native
++        // status have initialized. Queuing a WebView navigation is not enough.
+         try {
 -          state.status = await bridge.getStatus();
 -          $('#runtimeStatus').textContent = tr(state.status.available ? 'Agent 已就绪' : '运行时未配置');
 -          $('#runtimeDot').classList.toggle('ready', Boolean(state.status.available));
 -          fillModels(state.status.allowedModels || []);
--        } catch (error) {
++          await bridge.markReady();
+         } catch (error) {
 -          state.status = { available: false };
 -          $('#runtimeStatus').textContent = tr('运行时检查失败');
 -          var session = activeSession();
 -          if (session) recordEvent('error', { message: safeText(error && error.message || error) }, Date.now());
--        }
-+        await refreshRuntimeStatus();
-+        window.setInterval(refreshRuntimeStatus, 15000);
-         syncControls();
++          $('#runtimeStatus').textContent = english ? 'Workbench opening failed' : '工作台打开失败';
++          $('#runtimeStatus').title = safeText(error && error.message || error);
++          showToast((english ? 'Unable to confirm workbench startup: ' : '工作台启动确认失败：') + safeText(error && error.message || error));
+         }
+-        syncControls();
        }
  
+       void init();
 diff --git a/src-tauri/src/agent_runtime.rs b/src-tauri/src/agent_runtime.rs
 index 4f68404..13359df 100644
 --- a/src-tauri/src/agent_runtime.rs
@@ -2230,10 +2238,34 @@ index 4f68404..13359df 100644
      }
  
 diff --git a/src-tauri/src/agent_workbench_bridge.js b/src-tauri/src/agent_workbench_bridge.js
-index e91e546..263f764 100644
+index e91e546..089b8c7 100644
 --- a/src-tauri/src/agent_workbench_bridge.js
 +++ b/src-tauri/src/agent_workbench_bridge.js
-@@ -93,14 +93,22 @@
+@@ -73,6 +73,23 @@
+ 
+   var bridge = Object.freeze({
+     capabilityVersion: 2,
++    markReady: function () {
++      var query = new URLSearchParams(location.search || '');
++      var attemptId = query.get('attempt');
++      // A normal reload can open a document without a pending launch.
++      if (!attemptId) return Promise.resolve();
++      return invoke('agent_workbench_ready', { attemptId: attemptId }).then(function () {
++        // A later reload is not another launch. Keep the locale, but retire
++        // this one-time correlation ID once the native side has accepted it.
++        if (window.history && typeof window.history.replaceState === 'function') {
++          query.delete('attempt');
++          var search = query.toString();
++          try {
++            window.history.replaceState(null, '', (location.pathname || '/') + (search ? '?' + search : '') + (location.hash || ''));
++          } catch (_error) { /* URL cleanup must not turn readiness into failure. */ }
++        }
++      });
++    },
+     getStatus: function () {
+       return invoke('agent_get_status');
+     },
+@@ -93,14 +110,22 @@
      send: function (options) {
        return invoke('agent_send', { request: assertObject(options, 'options') });
      },
@@ -2259,10 +2291,18 @@ index e91e546..263f764 100644
      onEvent: function (handler) {
        if (typeof handler !== 'function') throw new TypeError('handler must be a function');
 diff --git a/src-tauri/src/seeseeyou_bridge.js b/src-tauri/src/seeseeyou_bridge.js
-index dda6d60..cc12521 100644
+index dda6d60..8a9f77b 100644
 --- a/src-tauri/src/seeseeyou_bridge.js
 +++ b/src-tauri/src/seeseeyou_bridge.js
-@@ -275,6 +275,7 @@
+@@ -14,6 +14,7 @@
+   var syncClearPending = false;
+   var loggingOut = false;
+   var agentActivationRunning = false;
++  var agentWorkbenchLaunchPromise = null;
+   var rebindRequired = false;
+   var lastSessionToken = '';
+   var lastTeamSelection = '';
+@@ -275,6 +276,7 @@
            token: runtimeToken,
            expiresIn: Number(issued && issued.expires_in || 0),
            defaultModel: String(issued && issued.default_model || config.default_model || ''),
@@ -2270,3 +2310,109 @@ index dda6d60..cc12521 100644
            allowedModels: Array.isArray(issued && issued.allowed_models)
              ? issued.allowed_models.map(String)
              : [],
+@@ -287,23 +289,93 @@
+     }
+   }
+ 
++  function showAgentWorkbenchOpenError(error, sourceButton) {
++    var clearTransition = showAgentWorkbenchTransition();
++    var overlay = document.getElementById('claritideAgentTransition');
++    if (!overlay) return;
++    overlay.textContent = '';
++    overlay.setAttribute('role', 'alertdialog');
++    overlay.setAttribute('aria-modal', 'true');
++    overlay.setAttribute('aria-labelledby', 'claritideAgentErrorTitle');
++    overlay.setAttribute('aria-describedby', 'claritideAgentErrorMessage');
++    var panel = document.createElement('section');
++    panel.style.cssText = 'box-sizing:border-box;width:min(480px,calc(100vw - 40px));max-height:calc(100vh - 48px);overflow:auto;padding:28px;border:1px solid #dde1dc;border-radius:16px;background:#fff;box-shadow:0 16px 48px #00000012';
++    var title = document.createElement('h2');
++    title.id = 'claritideAgentErrorTitle';
++    title.style.cssText = 'margin:0 0 12px;font-size:18px;color:#242824';
++    title.textContent = copy('AI 工作台未能打开', 'AI Workbench could not open');
++    var message = document.createElement('p');
++    message.id = 'claritideAgentErrorMessage';
++    message.style.cssText = 'margin:0;line-height:1.65;font-weight:400;white-space:pre-wrap;overflow-wrap:anywhere';
++    message.textContent = agentRuntimeErrorMessage(error);
++    var actions = document.createElement('div');
++    actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:24px';
++    var close = document.createElement('button');
++    close.id = 'claritideAgentClose';
++    close.type = 'button';
++    close.textContent = copy('关闭', 'Close');
++    close.style.cssText = 'padding:9px 18px;border:1px solid #d9ded7;border-radius:9px;background:#fff;color:#384036;font:inherit;cursor:pointer';
++    var retry = document.createElement('button');
++    retry.id = 'claritideAgentRetry';
++    retry.type = 'button';
++    retry.textContent = copy('重试', 'Retry');
++    retry.style.cssText = 'padding:9px 18px;border:1px solid #245d45;border-radius:9px;background:#245d45;color:#fff;font:inherit;cursor:pointer';
++    function dismiss() {
++      clearTransition();
++      var entry = ensureAgentWorkbenchEntry() || sourceButton;
++      if (entry && typeof entry.focus === 'function') entry.focus();
++    }
++    close.addEventListener('click', dismiss);
++    retry.addEventListener('click', function () {
++      dismiss();
++      launchAgentWorkbench(ensureAgentWorkbenchEntry() || sourceButton);
++    });
++    overlay.addEventListener('keydown', function (event) {
++      if (event.key === 'Escape') { event.preventDefault(); dismiss(); return; }
++      if (event.key === 'Tab') {
++        event.preventDefault();
++        if (document.activeElement === retry) close.focus();
++        else retry.focus();
++      }
++    });
++    actions.appendChild(close);
++    actions.appendChild(retry);
++    panel.appendChild(title);
++    panel.appendChild(message);
++    panel.appendChild(actions);
++    overlay.appendChild(panel);
++    retry.focus();
++  }
++
+   function launchAgentWorkbench(button, event) {
+     if (event) {
+       event.preventDefault();
+       if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+       else event.stopPropagation();
+     }
+-    if (button.disabled) return;
++    // One launch owns authorization and the transition even if My Day replaces
++    // or re-enables its navigation button while native navigation is pending.
++    if (agentWorkbenchLaunchPromise) return agentWorkbenchLaunchPromise;
++    if (!button || button.disabled) return;
+     button.disabled = true;
++    var oldTransition = document.getElementById('claritideAgentTransition');
++    if (oldTransition && oldTransition.parentNode) oldTransition.parentNode.removeChild(oldTransition);
+     var clearTransition = showAgentWorkbenchTransition();
+-    openAgentWorkbench().then(function () {
++    agentWorkbenchLaunchPromise = openAgentWorkbench().then(function () {
++      agentWorkbenchLaunchPromise = null;
+       clearTransition();
+       button.disabled = false;
+-    }).catch(function (error) {
++      ensureAgentWorkbenchEntry();
++    }, function (error) {
++      agentWorkbenchLaunchPromise = null;
+       clearTransition();
+       button.disabled = false;
+-      showDesktopError(agentRuntimeErrorMessage(error));
++      ensureAgentWorkbenchEntry();
++      // A WebView can suppress alert(); keep the failure visible with recovery
++      // controls in the document until the user retries or dismisses it.
++      showAgentWorkbenchOpenError(error, button);
+     });
++    return agentWorkbenchLaunchPromise;
+   }
+ 
+   function ensureAgentWorkbenchEntry() {
+@@ -328,6 +400,7 @@
+       }, true);
+     }
+     button.hidden = false;
++    button.disabled = Boolean(agentWorkbenchLaunchPromise);
+     button.textContent = copy('AI 工作台', 'AI Workbench');
+     button.setAttribute('aria-label', button.textContent);
+     return button;
