@@ -29,7 +29,7 @@
       --shadow: 0 14px 38px rgba(29, 31, 27, .13);
     }
     * { box-sizing: border-box; }
-    html, body { width: 100%; min-width: 900px; height: 100%; margin: 0; }
+    html, body { width: 100%; min-width: 320px; height: 100%; margin: 0; }
     body { overflow: hidden; background: var(--surface); color: var(--ink); font-size: 14px; }
     button, input, select, textarea { font: inherit; color: inherit; }
     button { cursor: pointer; }
@@ -192,6 +192,32 @@
     .card-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
     .card-button { min-height: 31px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); font-size: 11px; }
     .card-button:hover { background: var(--soft); }
+    .message-body.formatted { white-space: normal; }
+    .message-body.formatted > :first-child { margin-top: 0; }
+    .message-body.formatted > :last-child { margin-bottom: 0; }
+    .message-body.formatted p { margin: 10px 0; white-space: pre-wrap; }
+    .message-body.formatted h1, .message-body.formatted h2, .message-body.formatted h3 { margin: 21px 0 9px; line-height: 1.4; font-size: 17px; }
+    .message-body.formatted h1 { font-size: 20px; }
+    .message-body.formatted h3 { font-size: 15px; }
+    .message-body.formatted ul, .message-body.formatted ol { margin: 10px 0; padding-left: 24px; }
+    .message-body.formatted li { margin: 4px 0; }
+    .message-body.formatted blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--line-strong); color: var(--muted); white-space: pre-wrap; }
+    .message-body.formatted code { padding: 2px 5px; border-radius: 4px; background: var(--soft); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
+    .markdown-code { min-width: 0; margin: 13px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; }
+    .markdown-code-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; background: var(--soft); color: var(--muted); font-size: 11px; }
+    .markdown-code pre { max-height: 460px; overflow: auto; margin: 0; padding: 13px; line-height: 1.6; white-space: pre; }
+    .message-body.formatted .markdown-code code { padding: 0; background: transparent; }
+    .markdown-code .card-button { min-height: 28px; }
+    .markdown-link { display: inline; padding: 0; border: 0; background: transparent; color: var(--mint-dark); text-align: left; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; font: inherit; }
+    .markdown-link small { margin-left: 4px; color: var(--muted); font-size: 10px; text-decoration: none; }
+    .markdown-table-wrap { max-width: 100%; margin: 13px 0; overflow-x: auto; }
+    .markdown-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .markdown-table-wrap th, .markdown-table-wrap td { padding: 8px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; min-width: 90px; }
+    .markdown-table-wrap th { background: var(--soft); font-weight: 650; }
+    .approval-operation { margin: 9px 0; padding: 10px; max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .approval-details { margin: 10px 0; color: var(--muted); font-size: 11px; }
+    .approval-details summary { cursor: pointer; }
+    .approval-details pre { max-height: 260px; overflow: auto; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; }
 
     .composer-wrap { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 24px 22px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28px); }
     .composer { width: min(820px, calc(100% - 8px)); margin: 0 auto; border: 1px solid #dadcd6; border-radius: 19px; background: #fff; box-shadow: 0 7px 24px rgba(30, 32, 29, .09); }
@@ -413,16 +439,59 @@
       .conversation-inner { width: calc(100% - 40px); max-width: 640px; }
       .composer { max-width: 640px; }
     }
+
+    /* Keep the composer in layout so multiline drafts never cover a reply. */
+    .app { height: 100dvh; }
+    .main { grid-column: 2; grid-template-rows: 44px minmax(0, 1fr) auto; }
+    .composer-wrap { position: static; min-width: 0; background: #fff; }
+    .conversation { padding-bottom: 24px; }
+    .conversation-path { display: block; color: var(--muted); }
+    .sidebar-toggle { flex: 0 0 auto; }
+    .sidebar-close { display: none; }
+    .app.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+    .app.sidebar-collapsed .sidebar { display: none; }
+    .sidebar-backdrop { position: fixed; inset: 0; z-index: 35; border: 0; background: rgba(24, 27, 23, .25); }
+    .welcome .btn { margin-top: 20px; font-size: 13px; }
+    .item-shell:focus-within .item-menu summary { opacity: 1; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline-color: rgba(32, 33, 31, .55); }
+    .composer textarea:focus-visible { outline-offset: -5px; border-radius: 15px; }
+    @media (max-width: 880px) {
+      .app, .app.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+      .main { grid-column: 1; }
+      .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 40; width: min(280px, 85vw); box-shadow: var(--shadow); }
+      .sidebar-close { display: inline-flex; }
+      .main-head { padding: 0 10px; gap: 7px; }
+      .composer-wrap { padding: 10px 12px 8px; }
+      .conversation-inner { width: calc(100% - 32px); }
+      .composer { width: 100%; }
+      .activity { width: min(340px, 100%); }
+    }
+    @media (max-width: 560px) {
+      .conversation-path { max-width: 35%; }
+      .composer-row { flex-wrap: wrap; }
+      .model-effort-button { max-width: 165px; }
+      .control-popover, .control-popover.align-right { position: fixed; left: 12px; right: 12px; bottom: 90px; width: auto; max-height: 55vh; overflow: auto; }
+      .welcome { min-height: 230px; }
+      .welcome h1 { font-size: 20px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .conversation { scroll-behavior: auto; }
+      .pulse { animation: none; }
+      .toast { transition: none; }
+    }
+    .back-to-latest { display: block; margin: 0 auto 8px; padding: 7px 13px; border: 1px solid var(--line, #e5e7eb); border-radius: 18px; background: #fff; color: #374151; box-shadow: 0 2px 10px #0000000d; cursor: pointer; }
+    .back-to-latest[hidden] { display: none; }
   </style>
 </head>
 <body>
   <!-- Interface icons are from Lucide (ISC License). -->
   <div class="app">
-    <aside class="sidebar">
+    <aside class="sidebar" id="workspaceSidebar" aria-label="项目与对话" data-i18n-aria="项目与对话">
       <header class="sidebar-head">
         <div class="brand-mark" aria-hidden="true">C</div>
         <div class="brand-name">Claritide</div>
         <span class="spacer"></span>
+        <button class="text-button sidebar-close" id="closeSidebar" type="button" aria-label="关闭项目栏" data-i18n-aria="关闭项目栏">×</button>
         <button class="text-button" id="returnWorkspace" type="button">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
           <span data-i18n="返回">返回</span>
@@ -431,7 +500,7 @@
       <button class="new-chat" id="newSession" type="button">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></svg>
         <span data-i18n="新对话">新对话</span>
-        <span class="shortcut">Ctrl N</span>
+        <span class="shortcut" id="newChatShortcut">Ctrl N</span>
       </button>
       <div class="sidebar-scroll">
         <div class="section-head">
@@ -449,9 +518,13 @@
         <span id="runtimeStatus" data-i18n="正在检查运行时">正在检查运行时</span>
       </footer>
     </aside>
+    <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" tabindex="-1" aria-label="关闭项目栏" data-i18n-aria="关闭项目栏" hidden></button>
 
     <main class="main">
       <header class="main-head">
+        <button class="text-button sidebar-toggle" id="toggleSidebar" type="button" aria-controls="workspaceSidebar" aria-expanded="true" aria-label="显示或隐藏项目栏" data-i18n-aria="显示或隐藏项目栏">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg>
+        </button>
         <div class="conversation-title" id="sessionHeading" data-i18n="新对话">新对话</div>
         <div class="conversation-path" id="sessionMeta"></div>
         <span class="spacer"></span>
@@ -472,8 +545,9 @@
       </section>
 
       <div class="composer-wrap">
+        <button class="back-to-latest" id="backToLatest" type="button" hidden data-i18n="回到最新">回到最新</button>
         <div class="composer">
-          <textarea id="prompt" rows="2" placeholder="描述你想完成的任务" data-i18n-placeholder="描述你想完成的任务" disabled></textarea>
+          <textarea id="prompt" rows="2" aria-label="任务内容" data-i18n-aria="任务内容" placeholder="描述你想完成的任务" data-i18n-placeholder="描述你想完成的任务" disabled></textarea>
           <div class="attachment-tray" id="attachmentTray" hidden></div>
           <div class="composer-row">
             <button class="composer-button" id="addContext" type="button" data-i18n-title="添加文本文件" data-i18n-aria="添加" disabled>
@@ -621,6 +695,10 @@
       var WORKSPACE_URL = 'https://watch.sding.me/admin/my-day/?desktop=1';
       var STORAGE_KEY = 'claritide.agent.projects.v2';
       var LEGACY_STORAGE_KEY = 'claritide.agent.projects.v1';
+      var DRAFT_STORAGE_KEY = 'claritide.agent.composer.v1';
+      var MAX_SAVED_DRAFTS = 20;
+      var MAX_DRAFT_BYTES = 256 * 1024;
+      var MAX_SAVED_DRAFT_BYTES = 1024 * 1024;
       var FILE_LIMIT_BYTES = 64 * 1024;
       var TOTAL_FILE_LIMIT_BYTES = 64 * 1024;
       var EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -632,7 +710,14 @@
       var toastTimer;
 
       var EN = {
+        '项目与对话': 'Projects and chats',
+        '关闭项目栏': 'Close projects',
+        '显示或隐藏项目栏': 'Show or hide projects',
+        '任务内容': 'Task content',
+        '打开文件夹开始': 'Open a folder to start',
+        '输入任务，AI 会按所选权限处理当前项目。': 'Describe your task. AI works in this project with your selected permissions.',
         '返回': 'Back',
+        '回到最新': 'Back to latest',
         '新对话': 'New chat',
         '项目': 'Projects',
         '新建': 'New',
@@ -747,12 +832,16 @@
         draftModel: 'default',
         draftEffort: 'high',
         draftPermission: 'controlled',
-        lastSubmittedText: '',
+        composerDrafts: Object.create(null),
+        followConversation: true,
+        draftSaveTimer: null,
+        storageWarningShown: false,
         voiceActive: false
       };
       state.pendingApprovals = {};
       state.bufferedEvents = [];
       state.closingPromise = Promise.resolve();
+      var ui = { narrow: false, sidebarOpen: true, modalId: '', modalOpener: null };
 
       var $ = function (selector, root) { return (root || document).querySelector(selector); };
       var $$ = function (selector, root) { return Array.prototype.slice.call((root || document).querySelectorAll(selector)); };
@@ -819,8 +908,87 @@
         clearTimeout(toastTimer);
         toastTimer = setTimeout(function () { node.classList.remove('visible'); }, 2600);
       }
-      function openModal(id) { $('#' + id).classList.add('open'); }
-      function closeModal(id) { $('#' + id).classList.remove('open'); }
+      function focusableElements(root) {
+        return $$('button, input, select, textarea, a[href], summary, [tabindex]', root).filter(function (node) {
+          return !node.disabled && node.tabIndex >= 0 && !node.hidden && node.getClientRects().length > 0;
+        });
+      }
+
+      function trapFocus(event, root) {
+        if (event.key !== 'Tab') return;
+        var items = focusableElements(root);
+        if (!items.length) { event.preventDefault(); return; }
+        var first = items[0], last = items[items.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) {
+          event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) {
+          event.preventDefault(); first.focus();
+        }
+      }
+
+      function setSidebarOpen(open, focus) {
+        ui.sidebarOpen = Boolean(open);
+        $('.app').classList.toggle('sidebar-collapsed', !ui.sidebarOpen);
+        $('#workspaceSidebar').inert = !ui.sidebarOpen;
+        $('#sidebarBackdrop').hidden = !ui.narrow || !ui.sidebarOpen;
+        $('.main').inert = ui.narrow && ui.sidebarOpen;
+        $('#toggleSidebar').setAttribute('aria-expanded', String(ui.sidebarOpen));
+        if (focus) (ui.narrow && ui.sidebarOpen ? $('#closeSidebar') : $('#toggleSidebar')).focus();
+      }
+
+      function initLayout() {
+        var query = window.matchMedia('(max-width: 880px)');
+        var update = function () { ui.narrow = query.matches; setSidebarOpen(!ui.narrow, false); if (state.status) syncControls(); };
+        update();
+        if (query.addEventListener) query.addEventListener('change', update);
+        else query.addListener(update);
+        var platform = typeof navigator === 'undefined' ? '' : navigator.platform;
+        $('#newChatShortcut').textContent = /Mac|iPhone|iPad/.test(platform) ? '⌘ N' : 'Ctrl N';
+      }
+
+      function openModal(id) {
+        ui.modalOpener = document.activeElement;
+        ui.modalId = id;
+        var modal = $('#' + id);
+        modal.classList.add('open');
+        $('.app').inert = true;
+        var preferred = id === 'projectModal' ? $('#chooseFolder') : $('#cancelFullAccess');
+        (preferred || focusableElements(modal)[0]).focus();
+      }
+
+      function closeModal(id) {
+        $('#' + id).classList.remove('open');
+        if (ui.modalId !== id) return;
+        ui.modalId = '';
+        $('.app').inert = false;
+        if (ui.modalOpener && ui.modalOpener.isConnected && !ui.modalOpener.disabled) ui.modalOpener.focus();
+        ui.modalOpener = null;
+      }
+
+      function handleGlobalKeydown(event) {
+        if (ui.modalId) {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            if (ui.modalId === 'fullAccessModal') cancelFullAccess();
+            else closeModal(ui.modalId);
+          } else trapFocus(event, $('#' + ui.modalId));
+          return;
+        }
+        if (ui.narrow && ui.sidebarOpen) {
+          if (event.key === 'Escape') { event.preventDefault(); setSidebarOpen(false, true); }
+          else trapFocus(event, $('#workspaceSidebar'));
+          return;
+        }
+        if (event.key === 'Escape') {
+          closeMenus();
+          closeControlPopovers();
+          $('#activityPanel').hidden = true;
+        }
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.isComposing && event.key.toLowerCase() === 'n') {
+          event.preventDefault();
+          newConversation();
+        }
+      }
 
       function activeProject() {
         return state.projects.find(function (project) { return project.id === state.activeProjectId; }) || null;
@@ -837,6 +1005,8 @@
         if (session.permission === 'full') session.permission = 'controlled';
         session.messages = Array.isArray(session.messages) ? session.messages : [];
         session.events = Array.isArray(session.events) ? session.events.slice(-80) : [];
+        if (session.lastRequest && !validStoredDraft(session.lastRequest)) delete session.lastRequest;
+        if (session.lastFailedRequest && !validStoredDraft(session.lastFailedRequest)) delete session.lastFailedRequest;
         return session;
       }
 
@@ -850,20 +1020,138 @@
             project.sessions = Array.isArray(project.sessions) ? project.sessions.map(normalizeSession) : [];
           });
           if (state.projects.length) state.activeProjectId = state.projects[0].id;
+          loadComposerState();
         } catch (_error) {
           state.projects = [];
         }
       }
 
+      function storageWarning() {
+        if (state.storageWarningShown) return;
+        state.storageWarningShown = true;
+        showToast(english ? 'Local saving is unavailable or full. Keep this window open and copy important drafts before closing.' : '本地保存不可用或空间已满。请保留当前窗口，关闭前复制重要草稿。');
+      }
+
       function save() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.projects.map(function (project) {
-          return {
-            id: project.id,
-            name: project.name,
-            path: friendlyPath(project.path),
-            sessions: project.sessions || []
-          };
-        })));
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.projects.map(function (project) {
+            return { id: project.id, name: project.name, path: friendlyPath(project.path), sessions: project.sessions || [] };
+          })));
+          return true;
+        } catch (_error) {
+          // Storage failure must never turn an already accepted native send into
+          // a failed request, or remove the in-memory conversation.
+          storageWarning();
+          return false;
+        }
+      }
+
+      function composerKey(projectId, sessionId) {
+        return JSON.stringify([projectId == null ? state.activeProjectId : projectId, sessionId == null ? state.activeSessionId : sessionId]);
+      }
+
+      function copyAttachments(files) {
+        return (files || []).map(function (file) { return { name: file.name, content: file.content, size: new TextEncoder().encode(file.content).length }; });
+      }
+
+      function validStoredDraft(draft) {
+        if (!draft || typeof draft.text !== 'string' || !Array.isArray(draft.attachments) || draft.attachments.length > 100) return false;
+        var bytes = 0;
+        for (var i = 0; i < draft.attachments.length; i += 1) {
+          var file = draft.attachments[i];
+          if (!file || typeof file.name !== 'string' || file.name.length > 512 || typeof file.content !== 'string' || file.content.indexOf('\u0000') >= 0) return false;
+          bytes += new TextEncoder().encode(file.content).length;
+          if (bytes > TOTAL_FILE_LIMIT_BYTES) return false;
+        }
+        return new TextEncoder().encode(JSON.stringify(draft)).length <= MAX_DRAFT_BYTES;
+      }
+
+      function captureDraft() {
+        if (!state.activeProjectId) return;
+        var key = composerKey();
+        var text = $('#prompt').value;
+        if (text || state.attachments.length) {
+          state.composerDrafts[key] = { text: text, attachments: copyAttachments(state.attachments), updatedAt: Date.now() };
+        } else delete state.composerDrafts[key];
+      }
+
+      function persistComposerState() {
+        clearTimeout(state.draftSaveTimer);
+        state.draftSaveTimer = null;
+        var drafts = Object.create(null);
+        var bytes = new TextEncoder().encode(JSON.stringify({ activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: {} })).length;
+        var count = 0;
+        var limited = false;
+        Object.keys(state.composerDrafts).sort(function (a, b) {
+          return state.composerDrafts[b].updatedAt - state.composerDrafts[a].updatedAt;
+        }).forEach(function (key) {
+          var draft = state.composerDrafts[key];
+          var size = new TextEncoder().encode(JSON.stringify(key) + ':' + JSON.stringify(draft)).length + 1;
+          if (!validStoredDraft(draft) || count >= MAX_SAVED_DRAFTS || bytes + size > MAX_SAVED_DRAFT_BYTES) { limited = true; return; }
+          drafts[key] = draft;
+          bytes += size;
+          count += 1;
+        });
+        try {
+          localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ activeProjectId: state.activeProjectId, activeSessionId: state.activeSessionId, drafts: drafts }));
+          if (limited && !state.draftLimitWarningShown) {
+            state.draftLimitWarningShown = true;
+            showToast(english ? 'Draft storage limit reached. Only recent drafts that fit are saved for reopening; keep this window open for the others.' : '草稿保存已达上限，重开时仅恢复可容纳的最近草稿；其余草稿请保留当前窗口或先复制。');
+          }
+        } catch (_error) { storageWarning(); }
+      }
+
+      function rememberDraft(immediate) {
+        captureDraft();
+        clearTimeout(state.draftSaveTimer);
+        if (immediate) persistComposerState();
+        else state.draftSaveTimer = setTimeout(persistComposerState, 250);
+      }
+
+      function restoreDraft() {
+        var draft = state.composerDrafts[composerKey()];
+        $('#prompt').value = draft ? draft.text : '';
+        state.attachments = draft ? copyAttachments(draft.attachments) : [];
+        autoSizePrompt();
+        renderAttachments();
+      }
+
+      function loadComposerState() {
+        try {
+          var raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+          if (!raw || raw.length > MAX_SAVED_DRAFT_BYTES * 2) return;
+          var saved = JSON.parse(raw);
+          var total = 0;
+          Object.keys(saved.drafts || {}).slice(0, MAX_SAVED_DRAFTS).forEach(function (key) {
+            var owner;
+            try { owner = JSON.parse(key); } catch (_error) { return; }
+            var project = Array.isArray(owner) && state.projects.find(function (item) { return item.id === owner[0]; });
+            var draft = saved.drafts[key];
+            if (!project || (owner[1] && !project.sessions.some(function (item) { return item.id === owner[1]; })) || !validStoredDraft(draft)) return;
+            total += new TextEncoder().encode(JSON.stringify(draft)).length;
+            if (total <= MAX_SAVED_DRAFT_BYTES) state.composerDrafts[key] = { text: draft.text, attachments: copyAttachments(draft.attachments), updatedAt: Number(draft.updatedAt) || 0 };
+          });
+          var active = state.projects.find(function (item) { return item.id === saved.activeProjectId; });
+          if (active) {
+            state.activeProjectId = active.id;
+            state.activeSessionId = active.sessions.some(function (item) { return item.id === saved.activeSessionId; }) ? saved.activeSessionId : '';
+          }
+        } catch (_error) { /* An invalid draft snapshot cannot invalidate saved chats. */ }
+      }
+
+      function retryFailedRequest(sessionId) {
+        var session = activeSession();
+        if (!session || session.id !== sessionId || state.turnActive || state.starting) return;
+        var request = session.lastFailedRequest;
+        if (!request) return;
+        var text = $('#prompt').value;
+        var hasDifferentDraft = (text || state.attachments.length) && (text !== request.text || JSON.stringify(state.attachments) !== JSON.stringify(request.attachments || []));
+        if (hasDifferentDraft && !window.confirm(english ? 'Replace this unsent draft with the failed request?' : '用失败的请求替换当前未发送的草稿？')) return;
+        $('#prompt').value = request.text;
+        state.attachments = copyAttachments(request.attachments);
+        rememberDraft(true);
+        autoSizePrompt(); renderAttachments(); syncControls();
+        $('#prompt').focus();
       }
 
       function closeMenus(except) {
@@ -935,6 +1223,7 @@
           var row = document.createElement('button');
           row.className = 'project-row';
           row.type = 'button';
+          row.title = friendlyPath(project.path);
           var name = document.createElement('span');
           name.className = 'project-name';
           name.textContent = project.name;
@@ -1012,15 +1301,182 @@
         var copy = document.createElement('p');
         if (project) {
           heading.textContent = tr('想完成什么？');
-          copy.textContent = tr('直接输入任务，CCB 会自行读取、分析、修改并验证。');
+          copy.textContent = tr('输入任务，AI 会按所选权限处理当前项目。');
         } else {
           heading.textContent = tr('选择一个项目后即可开始');
           copy.textContent = tr('新建项目后可以直接输入任务，第一条消息会自动创建对话。');
         }
         inner.appendChild(heading);
         inner.appendChild(copy);
+        if (!project) {
+          var start = document.createElement('button');
+          start.type = 'button';
+          start.className = 'btn primary';
+          start.textContent = tr('打开文件夹开始');
+          start.addEventListener('click', function () { openProjectModal(); void chooseWorkspace(); });
+          inner.appendChild(start);
+        }
         wrap.appendChild(inner);
         host.appendChild(wrap);
+      }
+
+      async function copyOutputText(text, button) {
+        var previous = document.activeElement;
+        var temporary;
+        try {
+          if (window.navigator && window.navigator.clipboard && window.navigator.clipboard.writeText) {
+            await window.navigator.clipboard.writeText(safeText(text));
+          } else {
+            temporary = document.createElement('textarea');
+            temporary.value = safeText(text);
+            temporary.setAttribute('aria-label', english ? 'Text to copy' : '待复制文本');
+            temporary.style.cssText = 'position:fixed;left:-9999px;top:0';
+            document.body.appendChild(temporary);
+            temporary.select();
+            if (!document.execCommand || !document.execCommand('copy')) throw new Error('clipboard_unavailable');
+          }
+          showToast(english ? 'Copied' : '已复制');
+        } catch (error) {
+          showToast(english ? 'Could not copy. Select the text and copy it manually.' : '复制失败，请选中文本后手动复制。');
+        } finally {
+          if (temporary) temporary.remove();
+          if (previous && previous.focus) previous.focus();
+          else if (button && button.focus) button.focus();
+        }
+      }
+
+      function outputCopyButton(label, text) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'card-button';
+        button.textContent = label;
+        button.addEventListener('click', function () { return copyOutputText(text, button); });
+        return button;
+      }
+
+      function markdownTarget(target) {
+        // The trusted local document has no external/file opener capability.
+        // Links explicitly copy a destination; they never navigate this window.
+        if (/^https?:\/\//i.test(target) && !/[\u0000-\u0020\u007f]/.test(target)) return 'url';
+        if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return '';
+        if (/^[\\/]|^\.{1,2}[\\/]|^[a-z]:[\\/]/i.test(target) || /^[\w.@-]+(?:[\\/][\w.@ -]+)+$/.test(target) || /^[\w.@ -]+\.[a-z0-9]{1,12}(?:#[\w-]+)?$/i.test(target)) return 'path';
+        return '';
+      }
+
+      function appendInlineMarkdown(host, text, depth) {
+        if ((depth || 0) > 3) { host.appendChild(document.createTextNode(text)); return; }
+        var pattern = /`([^`\n]+)`|\[([^\]\n]{1,240})\]\(([^\s\n]{1,2048})\)|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*/g;
+        var match, position = 0;
+        while ((match = pattern.exec(text))) {
+          host.appendChild(document.createTextNode(text.slice(position, match.index)));
+          if (match[1] !== undefined) {
+            var code = document.createElement('code'); code.textContent = match[1]; host.appendChild(code);
+          } else if (match[2] !== undefined) {
+            var kind = markdownTarget(match[3]);
+            if (kind) {
+              var link = outputCopyButton(match[2], match[3]);
+              link.className = 'markdown-link';
+              link.title = match[3];
+              var action = kind === 'url' ? (english ? 'copy URL' : '复制链接') : (english ? 'copy path' : '复制路径');
+              link.setAttribute('aria-label', match[2] + ' · ' + action + ' · ' + match[3]);
+              var hint = document.createElement('small'); hint.textContent = action; link.appendChild(hint);
+              host.appendChild(link);
+            } else host.appendChild(document.createTextNode(match[0]));
+          } else {
+            var emphasis = document.createElement(match[4] !== undefined ? 'strong' : 'em');
+            appendInlineMarkdown(emphasis, match[4] || match[5], (depth || 0) + 1);
+            host.appendChild(emphasis);
+          }
+          position = pattern.lastIndex;
+        }
+        host.appendChild(document.createTextNode(text.slice(position)));
+      }
+
+      function markdownTableCells(line) {
+        var source = line.trim().replace(/^\||\|$/g, '');
+        var cells = [], cell = '';
+        for (var index = 0; index < source.length; index += 1) {
+          if (source[index] === '\\' && source[index + 1] === '|') { cell += '|'; index += 1; }
+          else if (source[index] === '|') { cells.push(cell.trim()); cell = ''; }
+          else cell += source[index];
+        }
+        cells.push(cell.trim());
+        return cells;
+      }
+
+      function renderAnswer(body, text) {
+        var source = safeText(text);
+        body._markdownSource = source;
+        body._streaming = false;
+        body.textContent = '';
+        body.classList.add('formatted');
+        // A corrupt/imported oversized response remains selectable plain text.
+        if (source.length > 262144) { body.classList.remove('formatted'); body.textContent = source; return; }
+        var lines = source.replace(/\r\n?/g, '\n').split('\n');
+        var index = 0;
+        while (index < lines.length) {
+          var line = lines[index];
+          if (!line.trim()) { index += 1; continue; }
+          var fence = /^\s{0,3}(`{3,}|~{3,})([^`]*)$/.exec(line);
+          if (fence) {
+            var codeLines = [], marker = fence[1][0], length = fence[1].length;
+            index += 1;
+            while (index < lines.length && !new RegExp('^\\s{0,3}' + marker + '{' + length + ',}\\s*$').test(lines[index])) { codeLines.push(lines[index]); index += 1; }
+            if (index < lines.length) index += 1;
+            var block = document.createElement('div'); block.className = 'markdown-code';
+            var bar = document.createElement('div'); bar.className = 'markdown-code-bar';
+            var language = document.createElement('span'); language.textContent = fence[2].trim() || (english ? 'Code' : '代码');
+            var codeText = codeLines.join('\n');
+            bar.appendChild(language); bar.appendChild(outputCopyButton(english ? 'Copy code' : '复制代码', codeText));
+            var pre = document.createElement('pre'); var code = document.createElement('code'); code.textContent = codeText;
+            pre.appendChild(code); block.appendChild(bar); block.appendChild(pre); body.appendChild(block);
+            continue;
+          }
+          if (index + 1 < lines.length && line.indexOf('|') !== -1) {
+            var headings = markdownTableCells(line), divider = markdownTableCells(lines[index + 1]);
+            if (headings.length > 1 && headings.length <= 16 && divider.length === headings.length && divider.every(function (cell) { return /^:?-{3,}:?$/.test(cell); })) {
+              var wrapper = document.createElement('div'); wrapper.className = 'markdown-table-wrap';
+              var table = document.createElement('table'), thead = document.createElement('thead'), headerRow = document.createElement('tr');
+              headings.forEach(function (cell) { var th = document.createElement('th'); th.setAttribute('scope', 'col'); appendInlineMarkdown(th, cell); headerRow.appendChild(th); });
+              thead.appendChild(headerRow); table.appendChild(thead);
+              var tbody = document.createElement('tbody'); index += 2;
+              while (index < lines.length && lines[index].trim() && lines[index].indexOf('|') !== -1) {
+                var cells = markdownTableCells(lines[index]);
+                if (cells.length !== headings.length) break;
+                var row = document.createElement('tr');
+                cells.forEach(function (cell) { var td = document.createElement('td'); appendInlineMarkdown(td, cell); row.appendChild(td); });
+                tbody.appendChild(row); index += 1;
+              }
+              table.appendChild(tbody); wrapper.appendChild(table); body.appendChild(wrapper); continue;
+            }
+          }
+          var heading = /^(#{1,6})\s+(.+)$/.exec(line);
+          if (heading) {
+            var title = document.createElement('h' + Math.min(3, heading[1].length)); appendInlineMarkdown(title, heading[2]); body.appendChild(title); index += 1; continue;
+          }
+          var list = /^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/.exec(line);
+          if (list) {
+            var ordered = Boolean(list[2]), listNode = document.createElement(ordered ? 'ol' : 'ul');
+            if (ordered && Number(list[2]) > 1) listNode.setAttribute('start', String(Number(list[2])));
+            do {
+              var item = document.createElement('li'); appendInlineMarkdown(item, list[3]); listNode.appendChild(item); index += 1;
+              list = index < lines.length ? /^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/.exec(lines[index]) : null;
+            } while (list && Boolean(list[2]) === ordered);
+            body.appendChild(listNode); continue;
+          }
+          var quoted = /^>\s?(.*)$/.exec(line);
+          if (quoted) {
+            var quote = document.createElement('blockquote'); var quotedLines = [];
+            do { quotedLines.push(quoted[1]); index += 1; quoted = index < lines.length ? /^>\s?(.*)$/.exec(lines[index]) : null; } while (quoted);
+            appendInlineMarkdown(quote, quotedLines.join('\n')); body.appendChild(quote); continue;
+          }
+          var paragraph = document.createElement('p'); var paragraphLines = [line]; index += 1;
+          while (index < lines.length && lines[index].trim() && !/^\s*(?:#{1,6}\s|`{3,}|~{3,}|>|[-+*]\s|\d+\.\s)/.test(lines[index])) {
+            if (index + 1 < lines.length && lines[index].indexOf('|') !== -1 && markdownTableCells(lines[index + 1]).every(function (cell) { return /^:?-{3,}:?$/.test(cell); })) break;
+            paragraphLines.push(lines[index]); index += 1;
+          }
+          appendInlineMarkdown(paragraph, paragraphLines.join('\n')); body.appendChild(paragraph);
+        }
       }
 
       function appendMessage(role, text, time, persist, attachments) {
@@ -1057,7 +1513,7 @@
           stamp.textContent = formatTime(time || Date.now());
           var body = document.createElement('div');
           body.className = 'message-body';
-          body.textContent = safeText(text);
+          renderAnswer(body, text);
           head.appendChild(author);
           head.appendChild(stamp);
           content.appendChild(head);
@@ -1112,15 +1568,20 @@
         card.className = 'result-card';
         var title = document.createElement('p');
         title.className = 'card-title';
-        title.textContent = tr('任务已完成');
+        title.textContent = english ? 'Run finished' : '本次运行结束';
         var copy = document.createElement('p');
         copy.className = 'card-copy';
         var parts = [];
         if (result && result.durationMs) parts.push(formatDuration(result.durationMs));
         if (result && result.numTurns) parts.push(String(result.numTurns) + (english ? ' turns' : ' 轮处理'));
-        copy.textContent = parts.join(' · ') || (english ? 'CCB finished the task.' : 'CCB 已完成本次任务。');
+        copy.textContent = parts.join(' · ') || (english ? 'The agent has finished this run.' : 'Agent 已结束本次处理。');
         var actions = document.createElement('div');
         actions.className = 'card-actions';
+        var session = activeSession();
+        var lastMessage = session && session.messages[session.messages.length - 1];
+        if (lastMessage && lastMessage.role === 'agent' && lastMessage.text) {
+          actions.appendChild(outputCopyButton(english ? 'Copy response' : '复制回答', lastMessage.text));
+        }
         var details = document.createElement('button');
         details.type = 'button';
         details.className = 'card-button';
@@ -1134,6 +1595,7 @@
       }
 
       function appendErrorCard(message, approvalUnsupported) {
+        var errorSessionId = state.activeSessionId;
         var card = document.createElement('div');
         card.className = approvalUnsupported ? 'approval-card' : 'error-card';
         var title = document.createElement('p');
@@ -1153,10 +1615,7 @@
             newConversation();
             toggleControlPopover('permission');
           } else {
-            $('#prompt').value = state.lastSubmittedText;
-            autoSizePrompt();
-            syncControls();
-            $('#prompt').focus();
+            retryFailedRequest(errorSessionId);
           }
         });
         var details = document.createElement('button');
@@ -1176,7 +1635,11 @@
             delete session.runtimeSessionId;
             session.nativeHistoryInitialized = false;
             state.attemptingResume = false;
-            if (!$('#prompt').value) $('#prompt').value = state.lastSubmittedText;
+            if (!$('#prompt').value && session.lastFailedRequest) {
+              $('#prompt').value = session.lastFailedRequest.text;
+              state.attachments = copyAttachments(session.lastFailedRequest.attachments);
+              rememberDraft(true); autoSizePrompt(); renderAttachments();
+            }
             save(); syncControls();
             showToast(english ? 'Native history could not be restored. Your next message will include the saved chat text; tool state cannot be recovered.' : '原生记录未能恢复。下次发送会带上保存的聊天文本，工具状态无法恢复。');
             recover.disabled = true;
@@ -1207,13 +1670,38 @@
         card.setAttribute('aria-label', english ? 'Operation approval' : '操作审批');
         var title = document.createElement('p');
         title.className = 'card-title';
-        title.textContent = (english ? 'Allow this operation? · ' : '允许此操作？· ') + safeText(approval.tool);
-        var detail = document.createElement('pre');
-        detail.style.cssText = 'max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere';
-        detail.textContent = JSON.stringify(approval.input, null, 2);
+        var input = approval.input && typeof approval.input === 'object' && !Array.isArray(approval.input) ? approval.input : {};
+        var tool = safeText(approval.tool);
+        var name = tool.toLowerCase();
+        var operation = document.createElement('pre'); operation.className = 'approval-operation';
+        var target = safeText(input.file_path || input.path || input.url || input.pattern || '');
+        if (name === 'bash' || name === 'shell' || name === 'execute_command') {
+          title.textContent = english ? 'Allow running this command?' : '允许运行这条命令？';
+          operation.textContent = safeText(input.command || input.cmd || '') || tool;
+        } else if (name === 'edit' || name === 'write' || name === 'multiedit' || name === 'notebookedit') {
+          title.textContent = english ? 'Allow changing this file?' : '允许修改这个文件？';
+          operation.textContent = target || tool;
+        } else if (name === 'read') {
+          title.textContent = english ? 'Allow reading this file?' : '允许读取这个文件？';
+          operation.textContent = target || tool;
+        } else if (name === 'glob' || name === 'grep') {
+          title.textContent = english ? 'Allow this search?' : '允许执行这次搜索？';
+          operation.textContent = [safeText(input.pattern), safeText(input.path)].filter(Boolean).join('\n') || tool;
+        } else if (name === 'webfetch') {
+          title.textContent = english ? 'Allow fetching this page?' : '允许访问这个页面？';
+          operation.textContent = target || tool;
+        } else {
+          title.textContent = english ? 'Allow this tool operation?' : '允许执行此工具操作？';
+          operation.textContent = tool + (target ? '\n' + target : '');
+        }
+        var detail = document.createElement('details'); detail.className = 'approval-details';
+        var summary = document.createElement('summary'); summary.textContent = english ? 'Full tool request · ' + tool : '查看完整操作参数 · ' + tool;
+        var rawRequest = document.createElement('pre'); rawRequest.textContent = JSON.stringify(approval, null, 2);
+        detail.appendChild(summary); detail.appendChild(rawRequest);
         var explanation = document.createElement('p');
         explanation.className = 'card-copy';
         explanation.textContent = english ? 'Session approval applies only to this exact tool and input. Different commands or paths will ask again.' : '本会话授权仅适用于此工具的相同操作；命令或路径改变时仍会询问。';
+        var status = document.createElement('p'); status.className = 'card-copy approval-status'; status.setAttribute('role', 'status');
         var actions = document.createElement('div');
         actions.className = 'card-actions';
         var sessionId = state.nativeSessionId;
@@ -1221,6 +1709,7 @@
           var button = document.createElement('button');
           button.type = 'button'; button.className = 'card-button'; button.textContent = choice[1];
           button.addEventListener('click', async function () {
+            status.textContent = '';
             $$('.card-button', card).forEach(function (item) { item.disabled = true; });
             try {
               await bridge.respondToApproval({ sessionId: sessionId, requestId: approval.requestId, decision: choice[0] });
@@ -1228,13 +1717,13 @@
               card.remove();
               updateRunIndicator('正在处理任务');
             } catch (error) {
-              explanation.textContent = safeText(error && error.message || error);
+              status.textContent = safeText(error && error.message || error);
               $$('.card-button', card).forEach(function (item) { item.disabled = false; });
             }
           });
           actions.appendChild(button);
         });
-        card.appendChild(title); card.appendChild(detail); card.appendChild(explanation); card.appendChild(actions);
+        card.appendChild(title); card.appendChild(operation); card.appendChild(detail); card.appendChild(explanation); card.appendChild(status); card.appendChild(actions);
         $('#conversationInner').appendChild(card);
         scrollConversation();
       }
@@ -1257,8 +1746,24 @@
         scrollConversation();
       }
 
-      function scrollConversation() {
-        requestAnimationFrame(function () { $('#conversation').scrollTop = $('#conversation').scrollHeight; });
+      function scrollConversation(force) {
+        if (force) state.followConversation = true;
+        $('#backToLatest').hidden = state.followConversation;
+        if (!state.followConversation) return;
+        requestAnimationFrame(function () {
+          if (!state.followConversation) return;
+          var conversation = $('#conversation');
+          // Immediate positioning avoids smooth-scroll events being mistaken for
+          // the reader scrolling away from the newest output.
+          conversation.style.scrollBehavior = 'auto';
+          conversation.scrollTop = conversation.scrollHeight;
+        });
+      }
+
+      function onConversationScroll() {
+        var conversation = $('#conversation');
+        state.followConversation = conversation.scrollHeight - conversation.clientHeight - conversation.scrollTop <= 72;
+        $('#backToLatest').hidden = state.followConversation;
       }
 
       function eventLabel(kind, payload) {
@@ -1266,7 +1771,7 @@
         if (kind === 'task_started') return english ? 'Task started' : '开始任务';
         if (kind === 'tool_started') return toolActivity(payload && (payload.tool || payload.toolName));
         if (kind === 'tool_completed') return english ? 'Tool completed' : '工具执行完成';
-        if (kind === 'turn_completed') return tr('任务已完成');
+        if (kind === 'turn_completed') return english ? 'Run finished' : '本次运行结束';
         if (kind === 'error') return tr('任务失败');
         if (kind === 'stopped') return tr('停止');
         return safeText(kind);
@@ -1374,7 +1879,9 @@
           remove.setAttribute('aria-label', (english ? 'Remove ' : '移除 ') + attachment.name);
           remove.addEventListener('click', function () {
             state.attachments.splice(index, 1);
+            rememberDraft(true);
             renderAttachments();
+            syncControls();
           });
           chip.appendChild(name);
           chip.appendChild(remove);
@@ -1408,7 +1915,8 @@
         $('#send').classList.toggle('stop-state', state.turnActive);
 
         $('#sessionHeading').textContent = session ? session.name : tr('新对话');
-        $('#sessionMeta').textContent = project ? friendlyPath(project.path) : '';
+        $('#sessionMeta').textContent = project ? (ui.narrow ? project.name : friendlyPath(project.path)) : '';
+        $('#sessionMeta').title = project ? friendlyPath(project.path) : '';
         $('#projectButton').textContent = project ? project.name : tr('选择项目');
         $('#permissionLabel').textContent = permissionLabel(currentPermission());
         $('#modelEffortLabel').textContent = modelLabel(currentModel()) + (effortSupported ? ' · ' + effortLabel(currentEffort()) : '');
@@ -1462,10 +1970,13 @@
 
       function selectProject(projectId) {
         if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        rememberDraft(true);
         void closeNativeSession();
         state.activeProjectId = projectId;
         state.activeSessionId = '';
-        state.attachments = [];
+        restoreDraft();
+        persistComposerState();
+        scrollConversation(true);
         renderProjects();
         renderConversation();
         renderAttachments();
@@ -1476,10 +1987,13 @@
 
       function selectSession(projectId, sessionId) {
         if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        rememberDraft(true);
         void closeNativeSession();
         state.activeProjectId = projectId;
         state.activeSessionId = sessionId;
-        state.attachments = [];
+        restoreDraft();
+        persistComposerState();
+        scrollConversation(true);
         renderProjects();
         renderConversation();
         renderAttachments();
@@ -1494,9 +2008,12 @@
           return;
         }
         if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        rememberDraft(true);
         void closeNativeSession();
         state.activeSessionId = '';
-        state.attachments = [];
+        restoreDraft();
+        persistComposerState();
+        scrollConversation(true);
         state.draftPermission = 'controlled';
         state.draftEffort = 'high';
         renderProjects();
@@ -1504,6 +2021,7 @@
         renderAttachments();
         renderActivity();
         syncControls();
+        if (ui.narrow) setSidebarOpen(false, false);
         $('#prompt').focus();
         showToast('新对话已准备好');
       }
@@ -1535,10 +2053,16 @@
         var workspace = state.pendingWorkspace;
         var name = $('#projectName').value.trim();
         if (!workspace || !name) return;
+        if (state.turnActive || state.starting) return showToast('请先停止当前执行');
+        rememberDraft(true);
+        void closeNativeSession();
         var project = { id: uid('project'), name: name, path: friendlyPath(workspace.path), nativeWorkspace: workspace, sessions: [] };
         state.projects.unshift(project);
         state.activeProjectId = project.id;
         state.activeSessionId = '';
+        restoreDraft();
+        persistComposerState();
+        scrollConversation(true);
         save();
         closeModal('projectModal');
         renderProjects();
@@ -1547,6 +2071,7 @@
         syncControls();
         $('#prompt').focus();
         showToast('项目已创建，可以直接输入任务');
+        if (ui.narrow) { setSidebarOpen(false, false); $('#prompt').focus(); }
       }
 
       function renameProject(projectId) {
@@ -1566,12 +2091,17 @@
         if (!project) return;
         var message = english ? 'Remove project "' + project.name + '"? Local files will not be deleted.' : '删除项目“' + project.name + '”？只会删除 Claritide 中的项目和对话记录，不会删除本地文件。';
         if (!window.confirm(message)) return;
+        rememberDraft(true);
         if (projectId === state.activeProjectId) await closeNativeSession();
+        Object.keys(state.composerDrafts).forEach(function (key) { if (JSON.parse(key)[0] === projectId) delete state.composerDrafts[key]; });
         state.projects = state.projects.filter(function (item) { return item.id !== projectId; });
         if (projectId === state.activeProjectId) {
           state.activeProjectId = state.projects[0] ? state.projects[0].id : '';
           state.activeSessionId = '';
+          restoreDraft();
+          scrollConversation(true);
         }
+        persistComposerState();
         save();
         renderProjects();
         renderConversation();
@@ -1598,9 +2128,12 @@
         var session = project && (project.sessions || []).find(function (item) { return item.id === sessionId; });
         if (!session) return;
         if (!window.confirm(english ? 'Delete chat "' + session.name + '"?' : '删除对话“' + session.name + '”？')) return;
+        rememberDraft(true);
         if (sessionId === state.activeSessionId) await closeNativeSession();
+        delete state.composerDrafts[composerKey(project.id, sessionId)];
         project.sessions = project.sessions.filter(function (item) { return item.id !== sessionId; });
-        if (sessionId === state.activeSessionId) state.activeSessionId = '';
+        if (sessionId === state.activeSessionId) { state.activeSessionId = ''; restoreDraft(); scrollConversation(true); }
+        persistComposerState();
         save();
         renderProjects();
         renderConversation();
@@ -1628,8 +2161,11 @@
           session.permission = 'full';
           state.fullAccessGrants[session.id] = true;
         }
+        captureDraft();
+        delete state.composerDrafts[composerKey(project.id, '')];
         project.sessions.unshift(session);
         state.activeSessionId = session.id;
+        rememberDraft(true);
         save();
         renderProjects();
         syncControls();
@@ -1777,8 +2313,10 @@
       }
 
       async function send() {
-        if (state.turnActive) return stop();
-        var value = $('#prompt').value.trim();
+        if (state.turnActive || state.starting) return;
+        rememberDraft(true);
+        var submittedDraftText = $('#prompt').value;
+        var value = submittedDraftText.trim();
         if ((!value && !state.attachments.length) || state.starting) return;
         if (!value) value = english ? 'Review the attached files and help me with them.' : '请查看附件并帮助我处理。';
         var session = ensureConversation(value);
@@ -1787,12 +2325,14 @@
         var content;
         try { content = runtimeContentForSession(session, value, attachments); }
         catch (error) { showToast(error.message); return; }
-        state.lastSubmittedText = value;
+        session.lastRequest = { text: value, attachments: copyAttachments(attachments) };
+        session.lastFailedRequest = null;
         state.starting = true;
         state.bufferedEvents = [];
         session.lastError = null;
         session.lastResult = null;
         renderConversation();
+        scrollConversation(true);
         syncControls();
         try {
           var id = await ensureNativeSession();
@@ -1800,8 +2340,10 @@
           await bridge.send({ sessionId: id, content: content });
           appendMessage('user', value, Date.now(), true, attachmentNames);
           // Clear only the accepted draft; preserve text typed while starting.
-          if ($('#prompt').value.trim() === value) $('#prompt').value = '';
-          state.attachments = [];
+          if ($('#prompt').value === submittedDraftText) $('#prompt').value = '';
+          state.attachments = state.attachments.filter(function (item) { return attachments.indexOf(item) < 0; });
+          rememberDraft(true);
+          autoSizePrompt();
           renderAttachments();
           state.starting = false;
           state.turnActive = true;
@@ -1821,6 +2363,8 @@
           removeRunIndicator();
           var message = safeText(error && error.message || error);
           session.lastError = { code: state.nativeSessionId ? 'send_failed' : 'start_failed', message: message, time: Date.now() };
+          session.lastFailedRequest = session.lastRequest;
+          rememberDraft(true);
           save();
           appendErrorCard(message, false);
           recordEvent('error', { code: session.lastError.code, message: message, terminal: true }, Date.now());
@@ -1839,6 +2383,7 @@
       }
 
       async function returnToWorkspace() {
+        rememberDraft(true);
         await closeNativeSession(true);
         window.location.assign(WORKSPACE_URL);
       }
@@ -1860,16 +2405,18 @@
           if (resolvedCard) resolvedCard.remove();
         } else if (event.type === 'text_delta') {
           var last = $('#conversationInner .message.agent:last-of-type .message-body');
-          if (!last) last = appendMessage('agent', '', Date.now(), false);
-          last.textContent = safeText(last.textContent) + safeText(payload.text);
+          if (!last || !last._streaming) last = appendMessage('agent', '', Date.now(), false);
+          last._streaming = true;
+          last._markdownSource = safeText(last._markdownSource) + safeText(payload.text);
+          last.classList.remove('formatted');
+          last.textContent = last._markdownSource;
         } else if (event.type === 'assistant_final') {
           state.attemptingResume = false;
           var finalBody = $('#conversationInner .message.agent:last-of-type .message-body');
-          if (!finalBody) finalBody = appendMessage('agent', '', Date.now(), false);
-          finalBody.textContent = safeText(payload.text || finalBody.textContent);
-          var lastMessage = session.messages[session.messages.length - 1];
-          if (lastMessage && lastMessage.role === 'agent') lastMessage.text = finalBody.textContent;
-          else session.messages.push({ role: 'agent', text: finalBody.textContent, time: Date.now(), attachments: [] });
+          if (!finalBody || !finalBody._streaming) finalBody = appendMessage('agent', '', Date.now(), false);
+          var answerSource = typeof payload.text === 'string' ? payload.text : safeText(finalBody._markdownSource);
+          renderAnswer(finalBody, answerSource);
+          session.messages.push({ role: 'agent', text: answerSource, time: Date.now(), attachments: [] });
           session.updatedAt = Date.now();
           save();
         } else if (event.type === 'tool_started') {
@@ -1881,11 +2428,13 @@
           removeRunIndicator();
           session.lastResult = payload;
           session.lastError = null;
+          session.lastFailedRequest = null;
           save();
           appendResultCard(payload);
         } else if (event.type === 'error') {
           var approvalUnsupported = payload.code === 'tool_approval_unsupported';
           session.lastError = { code: payload.code, message: safeText(payload.message || payload.code), time: Date.now() };
+          if (payload.terminal === true || approvalUnsupported) session.lastFailedRequest = session.lastRequest || null;
           save();
           if (payload.code === 'interrupt_failed') showToast(payload.message || (english ? 'Failed to stop. Please retry.' : '停止失败，请重试。'));
           if (payload.terminal === true || approvalUnsupported) {
@@ -1913,9 +2462,11 @@
       }
 
       async function addFiles(files) {
+        var ownerKey = composerKey();
         var total = state.attachments.reduce(function (sum, item) { return sum + item.size; }, 0);
         for (var index = 0; index < files.length; index += 1) {
           var file = files[index];
+          if (state.attachments.length >= 100) { showToast(english ? 'Up to 100 text files per draft.' : '每份草稿最多添加 100 个文本文件。'); break; }
           if (file.size > FILE_LIMIT_BYTES) {
             showToast(tr('文件过大') + ': ' + file.name);
             continue;
@@ -1926,15 +2477,19 @@
           }
           try {
             var content = await file.text();
+            if (ownerKey !== composerKey() || state.turnActive || state.starting) break;
             if (content.indexOf('\u0000') >= 0) throw new Error('binary');
-            state.attachments.push({ name: file.name, content: content, size: file.size });
-            total += file.size;
+            var size = new TextEncoder().encode(content).length;
+            if (size > FILE_LIMIT_BYTES || total + size > TOTAL_FILE_LIMIT_BYTES) { showToast(tr('文件过大') + ': ' + file.name); continue; }
+            state.attachments.push({ name: file.name.slice(0, 512), content: content, size: size });
+            total += size;
             showToast(tr('已添加文件') + ': ' + file.name);
           } catch (_error) {
             showToast(tr('仅支持文本文件') + ': ' + file.name);
           }
         }
         $('#fileInput').value = '';
+        rememberDraft(true);
         renderAttachments();
         syncControls();
       }
@@ -1945,6 +2500,7 @@
           recognition.stop();
           return;
         }
+        var voiceOwnerKey = composerKey();
         recognition = new SpeechRecognition();
         recognition.lang = english ? 'en-US' : 'zh-CN';
         recognition.interimResults = false;
@@ -1953,6 +2509,7 @@
         recognition.onend = function () { state.voiceActive = false; syncControls(); };
         recognition.onerror = function () { state.voiceActive = false; syncControls(); showToast('语音识别失败'); };
         recognition.onresult = function (event) {
+          if (voiceOwnerKey !== composerKey()) { recognition.stop(); return; }
           var text = '';
           for (var index = event.resultIndex; index < event.results.length; index += 1) {
             if (event.results[index].isFinal) text += event.results[index][0].transcript;
@@ -1960,6 +2517,7 @@
           if (text) {
             var prompt = $('#prompt');
             prompt.value = (prompt.value ? prompt.value + ' ' : '') + text.trim();
+            rememberDraft();
             autoSizePrompt();
             syncControls();
           }
@@ -1974,7 +2532,31 @@
         prompt.style.height = Math.min(prompt.scrollHeight, 160) + 'px';
       }
 
+      function onSendClick() {
+        if (state.turnActive) return stop();
+        return send();
+      }
+
+      function onPromptKeydown(event) {
+        if (event.isComposing || event.keyCode === 229) return;
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          if (state.turnActive || state.starting) {
+            rememberDraft(true);
+            showToast(english ? 'Draft kept. Send it after the current task finishes.' : '草稿已保留，当前任务结束后可手动发送。');
+            return;
+          }
+          void send();
+        }
+      }
+
       function bind() {
+        $('#toggleSidebar').addEventListener('click', function () { setSidebarOpen(!ui.sidebarOpen, true); });
+        $('#closeSidebar').addEventListener('click', function () { setSidebarOpen(false, true); });
+        $('#sidebarBackdrop').addEventListener('click', function () { setSidebarOpen(false, true); });
+        $('#projectList').addEventListener('click', function (event) {
+          if (ui.narrow && !state.turnActive && !state.starting && event.target.closest('.project-row, .session-row')) setSidebarOpen(false, true);
+        });
         $('#newProject').addEventListener('click', openProjectModal);
         $('#createProjectFromPopover').addEventListener('click', openProjectModal);
         $('#newSession').addEventListener('click', newConversation);
@@ -1992,14 +2574,12 @@
         $('#addContext').addEventListener('click', function () { $('#fileInput').click(); });
         $('#fileInput').addEventListener('change', function (event) { void addFiles(Array.prototype.slice.call(event.target.files || [])); });
         $('#voiceButton').addEventListener('click', toggleVoice);
-        $('#send').addEventListener('click', send);
-        $('#prompt').addEventListener('input', function () { autoSizePrompt(); syncControls(); });
-        $('#prompt').addEventListener('keydown', function (event) {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            void send();
-          }
-        });
+        $('#send').addEventListener('click', onSendClick);
+        $('#prompt').addEventListener('input', function () { rememberDraft(); autoSizePrompt(); syncControls(); });
+        $('#prompt').addEventListener('keydown', onPromptKeydown);
+        $('#conversation').addEventListener('scroll', onConversationScroll, { passive: true });
+        $('#backToLatest').addEventListener('click', function () { scrollConversation(true); });
+        window.addEventListener('pagehide', function () { rememberDraft(true); });
         $('#showActivity').addEventListener('click', openActivity);
         $('#closeActivity').addEventListener('click', function () { $('#activityPanel').hidden = true; });
         $('#renameActiveSession').addEventListener('click', function () { var session = activeSession(); if (session) renameSession(session.id); $('#headerMenu').removeAttribute('open'); });
@@ -2021,17 +2601,7 @@
           if (!event.target.closest('details')) closeMenus();
           if (!event.target.closest('.composer-control')) closeControlPopovers();
         });
-        document.addEventListener('keydown', function (event) {
-          if (event.key === 'Escape') {
-            closeMenus();
-            closeControlPopovers();
-            $('#activityPanel').hidden = true;
-          }
-          if (event.ctrlKey && event.key.toLowerCase() === 'n') {
-            event.preventDefault();
-            newConversation();
-          }
-        });
+        document.addEventListener('keydown', handleGlobalKeydown);
       }
 
       async function refreshRuntimeStatus() {
@@ -2072,7 +2642,9 @@
 
       async function init() {
         applyTranslations();
+        initLayout();
         load();
+        restoreDraft();
         bind();
         renderProjects();
         renderConversation();

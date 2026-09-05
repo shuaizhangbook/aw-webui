@@ -83,7 +83,8 @@ test('files, voice, stop, progress, result, and error states are functional', ()
   assert.match(html, /buildRuntimeContent\(value, attachments\)/);
   assert.match(html, /window\.SpeechRecognition \|\| window\.webkitSpeechRecognition/);
   assert.match(html, /recognition\.start\(\)/);
-  assert.match(html, /if \(state\.turnActive\) return stop\(\)/);
+  assert.match(html, /function onSendClick\(\)\s*\{\s*if \(state\.turnActive\) return stop\(\)/);
+  assert.match(html, /addEventListener\('keydown', onPromptKeydown\)/);
   assert.match(html, /className = 'run-indicator'/);
   assert.match(html, /className = 'result-card'/);
   assert.match(html, /className = approvalUnsupported \? 'approval-card' : 'error-card'/);

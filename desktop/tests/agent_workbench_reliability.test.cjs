@@ -11,7 +11,7 @@ function harness(overrides = {}) {
   const elements = new Map();
   function element() {
     return {
-      value: '', textContent: '', children: [], classList: { add() {}, remove() {}, toggle() {} },
+      value: '', textContent: '', children: [], style: {}, classList: { add() {}, remove() {}, toggle() {} },
       appendChild(child) { this.children.push(child); return child; },
       addEventListener() {}, setAttribute() {}, remove() {}, focus() {},
     };
