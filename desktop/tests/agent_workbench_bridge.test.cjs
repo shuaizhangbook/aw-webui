@@ -8,17 +8,17 @@ if (!bridgePath) {
   throw new Error('CLARITIDE_AGENT_BRIDGE_PATH must point to agent_workbench_bridge.js');
 }
 
-function loadBridge(invoke) {
+function loadBridge(invoke, location = {
+  protocol: 'claritide-agent:',
+  hostname: 'localhost',
+  port: '',
+}) {
   let intervalCallback = null;
   let cleared = false;
   const window = {
     __CLARITIDE_AGENT_BRIDGE_TEST_MODE__: true,
     __TAURI_INTERNALS__: { invoke },
-    location: {
-      protocol: 'claritide-agent:',
-      hostname: 'localhost',
-      port: '',
-    },
+    location,
     setInterval(callback) { intervalCallback = callback; return 7; },
     clearInterval(id) { assert.equal(id, 7); cleared = true; },
   };
@@ -33,6 +33,15 @@ function loadBridge(invoke) {
     get cleared() { return cleared; },
   };
 }
+
+test('local bridge initializes on the Windows custom-protocol mapping', () => {
+  const harness = loadBridge(async () => null, {
+    protocol: 'http:',
+    hostname: 'claritide-agent.localhost',
+    port: '',
+  });
+  assert.equal(harness.bridge.capabilityVersion, 2);
+});
 
 test('local bridge exposes the capability-v2 surface', async () => {
   const calls = [];
